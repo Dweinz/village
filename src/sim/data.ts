@@ -169,12 +169,31 @@ export const OUTPOST_JOB: JobDef = { id: 'deposit', name: 'Work the Deposit', ki
 
 // Foreign Cities: each reached city trades at its own rates. In each cycle a Trade Route sends one load of a good
 // the city buys and receives one load of a good it sells. The Nth Foreign City on the map (by id) gets the Nth entry.
-export interface ForeignCityDef { name: string; buys: Bag; sells: Bag } // amounts per load
+// `unlocks[t]` are extra goods (per load) the city deals in once its Reputation reaches tier t.
+export interface ForeignCityDef { name: string; buys: Bag; sells: Bag; unlocks: Record<number, { buys?: Bag; sells?: Bag }> }
 export const FOREIGN_CITIES: ForeignCityDef[] = [
-  { name: 'Varenhold', buys: { wood: 30, food: 40, gold: 25 }, sells: { crystal: 1, stone: 15, silk: 1 } },
-  { name: 'Saltmere', buys: { food: 30, ore: 6, gold: 20 }, sells: { spice: 2, wood: 20, gold: 12 } },
-  { name: 'Ashkar', buys: { stone: 20, crystal: 1, gold: 30 }, sells: { silk: 2, ore: 8, spice: 1 } },
+  {
+    name: 'Varenhold', buys: { wood: 30, food: 40, gold: 25 }, sells: { crystal: 1, stone: 15, silk: 1 },
+    unlocks: { 1: { buys: { ore: 8 } }, 2: { sells: { spice: 1 } }, 3: { sells: { gold: 20 } } },
+  },
+  {
+    name: 'Saltmere', buys: { food: 30, ore: 6, gold: 20 }, sells: { spice: 2, wood: 20, gold: 12 },
+    unlocks: { 1: { buys: { stone: 20 } }, 2: { sells: { silk: 1 } }, 3: { sells: { crystal: 1 } } },
+  },
+  {
+    name: 'Ashkar', buys: { stone: 20, crystal: 1, gold: 30 }, sells: { silk: 2, ore: 8, spice: 1 },
+    unlocks: { 1: { buys: { wood: 30 } }, 2: { sells: { food: 40 } }, 3: { sells: { crystal: 1 } } },
+  },
 ]
+// Reputation: a Foreign City's standing toward the player, earned by completed Trade Route cycles. Each Reputation
+// Tier raises every load the city sells by its sellBonus (see ratesAt in game.ts) and unlocks that city's goods for the tier.
+export const REPUTATION_PER_CYCLE = 1
+export const REPUTATION_TIERS = [
+  { name: 'Stranger', reputation: 0, sellBonus: 0 },
+  { name: 'Friend', reputation: 20, sellBonus: 0.2 },
+  { name: 'Partner', reputation: 60, sellBonus: 0.4 },
+  { name: 'Honored', reputation: 150, sellBonus: 0.6 },
+] as const
 export const TRADE_JOB: JobDef = { id: 'trade', name: 'Trade Route', kind: 'production', minLevel: 1, duration: 30, attrs: { cha: 1 }, yields: {}, xp: 3 }
 
 export const NAMES = [

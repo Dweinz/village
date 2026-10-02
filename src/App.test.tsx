@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
-import { advance, assign, assignOutpost, build, buildOutpost, foreignCity, newGame, openTradeRoute, ruinLevel, sendExpedition, type GameEvent } from './sim/game'
-import { RES_NAME, SITE_KINDS } from './sim/data'
+import { advance, assign, assignOutpost, build, buildOutpost, foreignCity, newGame, nextReputationTier, openTradeRoute, ruinLevel, sendExpedition, type GameEvent } from './sim/game'
+import { FOREIGN_CITIES, REPUTATION_TIERS, RES_NAME, SITE_KINDS } from './sim/data'
 import { SAVE_KEY, toSave } from './sim/save'
+import { costText } from './format'
 
 beforeEach(() => { vi.useFakeTimers({ now: new Date('2026-10-02T12:00:00Z') }) })
 
@@ -410,4 +411,52 @@ test('goods traded while the game was closed are totalled in the Report', () => 
   const line = within(report).getByText(/Trade Routes sent/)
   expect(line.textContent).toMatch(/sent 🪵 \d+, received 🔮 \d+/)
   expect(within(report).queryByText(new RegExp(`traded at ${rates.name}`))).toBeNull() // totalled, not one line per cycle
+})
+
+test("a reached Foreign City's panel shows its Reputation, its tier and what the next tier unlocks", () => {
+  const { game, city, rates } = cityGame()
+  city.reputation = 5
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+  fireEvent.click(screen.getByRole('button', { name: `Foreign City, distance ${city.distance}` }))
+  const panel = screen.getByRole('complementary', { name: 'Foreign City' })
+  const card = within(panel).getByRole('region', { name: 'Reputation' })
+  expect(card.textContent).toContain(`Reputation 5 · ${REPUTATION_TIERS[0].name}`)
+  expect(within(card).getByText(/Next/).textContent).toBe(`Next: ${REPUTATION_TIERS[1].name} at ${REPUTATION_TIERS[1].reputation}`)
+  const next = nextReputationTier(game, city.id)!
+  expect(within(card).getByText(/^Then sells/).textContent).toContain(costText(next.sells))
+  const def = FOREIGN_CITIES.find((c) => c.name === rates.name)!
+  expect(within(card).getByText(/Then also buys/).textContent).toContain(Object.keys(def.unlocks[1].buys!).map((r) => RES_NAME[r as keyof typeof RES_NAME]).join(', '))
+})
+
+test('a Foreign City at the top tier says so', () => {
+  const { game, city } = cityGame()
+  city.reputation = REPUTATION_TIERS[REPUTATION_TIERS.length - 1].reputation
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+  fireEvent.click(screen.getByRole('button', { name: `Foreign City, distance ${city.distance}` }))
+  const card = screen.getByRole('region', { name: 'Reputation' })
+  expect(card.textContent).toContain(REPUTATION_TIERS[REPUTATION_TIERS.length - 1].name)
+  expect(card.textContent).toContain('highest tier')
+})
+
+test('reaching a Reputation Tier shows a notification', () => {
+  const { game, city, rates } = cityGame()
+  city.reputation = REPUTATION_TIERS[1].reputation - 1
+  localStorage.setItem(SAVE_KEY, toSave(openTradeRoute(game, game.villagers[0].id, city.id, 'wood', 'crystal'), Date.now()))
+  render(<App />)
+  const text = `🤝 Reputation with ${rates.name} rose to ${REPUTATION_TIERS[1].name}`
+  for (let s = 0; s < 60 && !screen.queryByText(text); s++) passTime(1000) // a toast only stays up a few seconds
+  expect(screen.getByText(text)).toBeTruthy()
+})
+
+test('a Reputation Tier reached while the game was closed is in the Report', () => {
+  const { game, city, rates } = cityGame()
+  city.reputation = REPUTATION_TIERS[1].reputation - 1
+  localStorage.setItem(SAVE_KEY, toSave(openTradeRoute(game, game.villagers[0].id, city.id, 'wood', 'crystal'), Date.now() - 600_000))
+  render(<App />)
+  const report = screen.getByRole('dialog', { name: 'While you were away' })
+  expect(within(report).getByText(`🤝 Reputation with ${rates.name} rose to ${REPUTATION_TIERS[1].name}`)).toBeTruthy()
 })

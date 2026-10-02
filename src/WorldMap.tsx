@@ -2,11 +2,11 @@
 import { useState } from 'react'
 import { activityText, costText, dur, type Act } from './format'
 import {
-  EXPEDITION_ATTRS, EXPEDITION_MAX_PARTY, RES_ICON, RES_NAME, RUIN_INJURY_CHANCE, SITE_KINDS, SITE_MAX_DISTANCE, SITE_REVEAL_DISTANCE, SPECS,
+  EXPEDITION_ATTRS, EXPEDITION_MAX_PARTY, REPUTATION_TIERS, RES_ICON, RES_NAME, RUIN_INJURY_CHANCE, SITE_KINDS, SITE_MAX_DISTANCE, SITE_REVEAL_DISTANCE, SPECS,
   type Res,
 } from './sim/data'
 import {
-  assignOutpost, buildOutpost, canAfford, canJoinExpedition, canTrade, closeTradeRoute, foreignCity, openTradeRoute, outpostCost, outpostMaxLevel, outpostSlots,
+  assignOutpost, buildOutpost, canAfford, canJoinExpedition, canTrade, closeTradeRoute, foreignCity, nextReputationTier, openTradeRoute, outpostCost, outpostMaxLevel, outpostSlots,
   outpostWorkers, planExpedition, recallExpedition, ruinLevel, ruinReward, ruinXp, sendExpedition, siteById, tradeRoutes, tradeStalled, unassign, upgradeOutpost,
   type ExpeditionTarget, type Game,
 } from './sim/game'
@@ -96,6 +96,7 @@ export function SitePanel({ game, site, act, onClose }: { game: Game; site: Site
       </div>
       {site.kind === 'deposit' && site.discovery === 'reached' && <OutpostCard game={game} site={site} act={act} />}
       {site.kind === 'ruin' && <RuinCard site={site} />}
+      {site.kind === 'city' && site.discovery === 'reached' && <ReputationCard game={game} site={site} />}
       {site.kind === 'city' && site.discovery === 'reached' && <TradeCard key={site.id} game={game} site={site} act={act} />}
       {site.discovery === 'revealed' && <PartyPicker key={site.id} game={game} target={{ kind: 'reach', site: site.id }} act={act} />}
       {site.kind === 'ruin' && site.discovery === 'reached' && !site.cleared && (
@@ -113,6 +114,24 @@ function RuinCard({ site }: { site: Site }) {
       <p className="muted">Worse odds than a normal Expedition; on failure each member has a {Math.round(RUIN_INJURY_CHANCE * 100)}% Injury chance. You can try again.</p>
       <p>Reward: {costText(ruinReward(site))} · {ruinXp(site)} XP each</p>
     </div>
+  )
+}
+
+function ReputationCard({ game, site }: { game: Game; site: Site }) {
+  const { reputation, tier } = foreignCity(game, site.id)
+  const next = nextReputationTier(game, site.id)
+  const names = (goods: Res[]) => goods.map((r) => `${RES_ICON[r]} ${RES_NAME[r]}`).join(', ')
+  return (
+    <section className="card small" aria-label="Reputation">
+      <div className="row"><strong>Reputation {reputation} · {REPUTATION_TIERS[tier].name}</strong></div>
+      {next ? (
+        <>
+          <p className="muted">Next: {next.name} at {next.reputation}</p>
+          <p className="muted">Then sells {costText(next.sells)}{next.newSells.length > 0 && ` (new: ${names(next.newSells)})`}</p>
+          {next.newBuys.length > 0 && <p className="muted">Then also buys {names(next.newBuys)}</p>}
+        </>
+      ) : <p className="muted">The highest tier: its best rates and every good it deals in.</p>}
+    </section>
   )
 }
 

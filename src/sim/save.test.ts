@@ -66,6 +66,13 @@ test("the v6 migration's Rare Materials for an old save's deposits are pinned", 
   expect(deposits.map((s) => `${s.id} ${s.material}`)).toEqual(['1 crystal', '5 spice', '7 silk', '12 crystal', '14 spice'])
 })
 
+test('an old save gives every Foreign City zero Reputation', () => {
+  const cities = fromSave(v1Text)!.game.worldMap.filter((s) => s.kind === 'city')
+  expect(cities.length).toBeGreaterThan(0)
+  expect(cities.every((s) => s.reputation === 0)).toBe(true)
+  expect(fromSave(v1Text)!.game.worldMap.filter((s) => s.kind !== 'city').every((s) => s.reputation === undefined)).toBe(true)
+})
+
 test('a v1 save keeps playing: its Jobs keep producing and it can finish the Founding Chapter', () => {
   let g = fromSave(v1Text)!.game
   g = advance(g, 60)

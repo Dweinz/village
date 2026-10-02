@@ -143,8 +143,12 @@ A Site that can be the target of one high-risk, high-reward Expedition.
 _Avoid_: Dungeon, lair
 
 **Reputation**:
-A Foreign City's standing toward the player.
+A Foreign City's standing toward the player, which starts at zero and rises with each completed Trade Route cycle.
 _Avoid_: Relations, favor, diplomacy
+
+**Reputation Tier**:
+A named band of Reputation: Stranger, Friend, Partner, then Honored. Each tier improves the city's rates and unlocks more goods to trade there.
+_Avoid_: Rank, level (reserved for Villagers and Buildings)
 
 ### Progression
 

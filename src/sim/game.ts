@@ -3,11 +3,11 @@ import {
   ATTRS, BUILDINGS, EXPEDITION_ATTRS, EXPEDITION_BASE_CHANCE, EXPEDITION_CHANCE_PER_DISTANCE, EXPEDITION_CHANCE_PER_POINT,
   EXPEDITION_CHANCE_RANGE, EXPEDITION_FOOD_PER_MEMBER_DISTANCE, EXPEDITION_GOLD_PER_DISTANCE, EXPEDITION_MAX_PARTY,
   EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, INJURY_CHANCE, INJURY_SECONDS, MAX_BUILDING_LEVEL, NAMES, OUTPOST_COST, OUTPOST_JOB, OUTPOST_SLOTS, OUTPOST_YIELD, RES_NAME,
-  FOREIGN_CITIES, RUIN_BASE_CHANCE, RUIN_INJURY_CHANCE, RUIN_LEVEL_BASE, RUIN_MAX_CHANCE, RUIN_REWARD_PER_DISTANCE, RUIN_XP_PER_DISTANCE, SPECS, SPEC_LEVEL, TRADE_JOB, TRAITS,
-  TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type JobDef, type Res, type SpecId, type TraitId, type Workplace,
+  FOREIGN_CITIES, REPUTATION_PER_CYCLE, REPUTATION_TIERS, RUIN_BASE_CHANCE, RUIN_INJURY_CHANCE, RUIN_LEVEL_BASE, RUIN_MAX_CHANCE, RUIN_REWARD_PER_DISTANCE, RUIN_XP_PER_DISTANCE, SPECS, SPEC_LEVEL, TRADE_JOB, TRAITS,
+  TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type ForeignCityDef, type JobDef, type Res, type SpecId, type TraitId, type Workplace,
 } from './data'
 import { mulberry32 } from './random'
-import { generateWorldMap, withMaterials, type Site } from './world'
+import { generateWorldMap, withMaterials, withReputation, type Site } from './world'
 
 export interface Villager {
   id: number
@@ -73,6 +73,7 @@ export type GameEvent =
   | { kind: 'siteRevealed'; party: string[]; id: number; site: Site['kind']; distance: number }
   | { kind: 'ruinCleared'; party: string[]; reward: Bag }
   | { kind: 'traded'; name: string; city: string; gave: Bag; got: Bag } // one Trade Route cycle
+  | { kind: 'reputationTier'; city: string; tier: number } // a Foreign City's Reputation reached a new tier
   | { kind: 'injured'; name: string }
   | { kind: 'recovered'; name: string }
 
@@ -243,7 +244,7 @@ export function newGame(seed = Date.now()): Game {
   const g: Game = {
     time: 0, seed, stock: { gold: 30, wood: 20, stone: 0, food: 30, ore: 0, crystal: 0, spice: 0, silk: 0 },
     plots: Array(PLOT_COUNT).fill(null), villagers: [], recruits: [], tavernRefreshAt: 0,
-    chapter: 0, done: [], starving: false, nextId: 1, worldMap: withMaterials(generateWorldMap(seed)), expeditions: [],
+    chapter: 0, done: [], starving: false, nextId: 1, worldMap: withReputation(withMaterials(generateWorldMap(seed))), expeditions: [],
   }
   g.plots[0] = { type: 'townhall', level: 1 }
   g.plots[1] = { type: 'farm', level: 1 }
@@ -310,6 +311,9 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     route.progress = 0
     addXp(v, TRADE_JOB.xp * mult(v, 'trade', 'xp'), ev)
     ev.push({ kind: 'traded', name: v.name, city: city.name, gave, got })
+    const site = siteById(g, route.site)
+    site.reputation = (site.reputation ?? 0) + REPUTATION_PER_CYCLE
+    for (let tier = city.tier + 1; tier <= reputationTier(site.reputation); tier++) ev.push({ kind: 'reputationTier', city: city.name, tier })
   }
 
   for (const v of g.villagers) {
@@ -491,10 +495,42 @@ export const assignOutpost = action((g, villagerId: number, siteId: number) => {
   v.activity = { kind: 'outpost', site: siteId, progress: 0 }
 })
 
-/** The rates a Foreign City trades at. Its place among the map's cities picks its entry in FOREIGN_CITIES. */
+/** The Reputation Tier (index into REPUTATION_TIERS) that this much Reputation has reached. */
+export const reputationTier = (reputation: number) => REPUTATION_TIERS.filter((t) => reputation >= t.reputation).length - 1
+
+// A Foreign City's place among the map's cities picks its entry in FOREIGN_CITIES.
+const cityDef = (g: Game, siteId: number) => FOREIGN_CITIES[g.worldMap.filter((s) => s.kind === 'city').findIndex((s) => s.id === siteId)]
+
+// What a city trades at a tier: its own goods plus every tier's unlocks so far. Each tier raises every load it
+// sells by its sellBonus (rounded up) and by at least one more than the tier before, so small loads improve too.
+function ratesAt(def: ForeignCityDef, tier: number) {
+  const buys: Bag = { ...def.buys }
+  const sells: Bag = { ...def.sells }
+  for (let t = 1; t <= tier; t++) {
+    Object.assign(buys, def.unlocks[t]?.buys)
+    Object.assign(sells, def.unlocks[t]?.sells)
+  }
+  for (const [r, n] of Object.entries(sells)) sells[r as Res] = Math.max(Math.ceil(n * (1 + REPUTATION_TIERS[tier].sellBonus)), n + tier)
+  return { buys, sells }
+}
+
+/** A Foreign City's name, Reputation and tier, and the rates it trades at now. */
 export function foreignCity(g: Game, siteId: number) {
-  const cities = g.worldMap.filter((s) => s.kind === 'city')
-  return FOREIGN_CITIES[cities.findIndex((s) => s.id === siteId)]
+  const def = cityDef(g, siteId)
+  const reputation = siteById(g, siteId).reputation ?? 0
+  const tier = reputationTier(reputation)
+  return { name: def.name, reputation, tier, ...ratesAt(def, tier) }
+}
+/**
+ * The Reputation Tier a Foreign City reaches next: the Reputation it needs, the rates it will trade at, and which
+ * goods it newly deals in. Undefined at the top tier.
+ */
+export function nextReputationTier(g: Game, siteId: number) {
+  const def = cityDef(g, siteId)
+  const tier = reputationTier(siteById(g, siteId).reputation ?? 0) + 1
+  if (tier >= REPUTATION_TIERS.length) return undefined
+  const { buys = {}, sells = {} } = def.unlocks[tier] ?? {}
+  return { tier, ...REPUTATION_TIERS[tier], ...ratesAt(def, tier), newBuys: Object.keys(buys) as Res[], newSells: Object.keys(sells) as Res[] }
 }
 /** True while a Trade Route waits at the end of its cycle for the Stockpile to cover its load. */
 export function tradeStalled(g: Game, v: Villager) {

@@ -3,7 +3,7 @@ import { Scene } from './Scene'
 import { ExplorePanel, SitePanel, WorldMap } from './WorldMap'
 import { activityText, costText, dur, fmt, type Act } from './format'
 import {
-  ATTRS, ATTR_NAMES, BUILDINGS, RESOURCES, RES_ICON, RES_NAME, SITE_KINDS, SPECS, isRare, SPEC_IDS, SPEC_LEVEL, TRAITS,
+  ATTRS, ATTR_NAMES, BUILDINGS, REPUTATION_TIERS, RESOURCES, RES_ICON, RES_NAME, SITE_KINDS, SPECS, isRare, SPEC_IDS, SPEC_LEVEL, TRAITS,
   type Bag, type BuildingType, type Res,
 } from './sim/data'
 import {
@@ -49,6 +49,7 @@ function describe(e: GameEvent) {
     case 'recovered': return `💪 ${e.name} has recovered`
     case 'ruinCleared': return `🏛️ ${e.party.join(', ')} cleared a Ruin and brought back ${costText(e.reward)}`
     case 'traded': return `🐪 ${e.name} traded at ${e.city}`
+    case 'reputationTier': return `🤝 Reputation with ${e.city} rose to ${REPUTATION_TIERS[e.tier].name}`
     case 'siteRevealed': return `🌫️ ${e.party.join(', ')} found a ${SITE_KINDS[e.site].name} at distance ${e.distance}`
   }
 }

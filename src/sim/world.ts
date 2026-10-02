@@ -13,6 +13,7 @@ export interface Site {
   material?: RareMaterial // what a Resource Deposit yields
   outpost?: { level: number } // built on a reached Resource Deposit
   cleared?: boolean // a Ruin whose Expedition has succeeded
+  reputation?: number // a Foreign City's standing toward the player
 }
 
 /**
@@ -46,3 +47,6 @@ export const withMaterials = (map: Site[]): Site[] => {
   let n = 0
   return map.map((s) => (s.kind === 'deposit' ? { ...s, material: RARE_MATERIALS[n++ % RARE_MATERIALS.length] } : s))
 }
+
+/** Gives each Foreign City its starting Reputation of zero. */
+export const withReputation = (map: Site[]): Site[] => map.map((s) => (s.kind === 'city' ? { ...s, reputation: 0 } : s))
