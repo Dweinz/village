@@ -6,16 +6,24 @@ export const ATTR_NAMES: Record<Attr, string> = {
   str: 'Strength', dex: 'Dexterity', int: 'Intellect', cha: 'Charm', end: 'Endurance', per: 'Perception',
 }
 
-export const RESOURCES = ['gold', 'wood', 'stone', 'food', 'ore'] as const
+export const RARE_MATERIALS = ['crystal', 'spice', 'silk'] as const // only from Sites or trade
+export type RareMaterial = (typeof RARE_MATERIALS)[number]
+export const RESOURCES = ['gold', 'wood', 'stone', 'food', 'ore', ...RARE_MATERIALS] as const
 export type Res = (typeof RESOURCES)[number]
 export type Bag = Partial<Record<Res, number>>
-export const RES_ICON: Record<Res, string> = { gold: '🪙', wood: '🪵', stone: '🪨', food: '🌾', ore: '⛏️' }
-export const RES_NAME: Record<Res, string> = { gold: 'Gold', wood: 'Wood', stone: 'Stone', food: 'Food', ore: 'Ore' }
+export const isRare = (r: Res): r is RareMaterial => (RARE_MATERIALS as readonly Res[]).includes(r)
+export const RES_ICON: Record<Res, string> = { gold: '🪙', wood: '🪵', stone: '🪨', food: '🌾', ore: '⛏️', crystal: '🔮', spice: '🌶️', silk: '🧵' }
+export const RES_NAME: Record<Res, string> = {
+  gold: 'Gold', wood: 'Wood', stone: 'Stone', food: 'Food', ore: 'Ore', crystal: 'Crystal', spice: 'Spice', silk: 'Silk',
+}
 
 export type BuildingType = 'townhall' | 'farm' | 'lumbercamp' | 'house' | 'tavern' | 'quarry' | 'mine' | 'guildhall'
 
-// Shared shape for Trait and Specialization effects. No `buildings` = applies everywhere.
-export interface Bonus { buildings?: BuildingType[]; speed?: number; xp?: number; gold?: number; expedition?: number } // expedition: added success chance
+// Where a Villager can work a Production Job: a Building, or an Outpost on a Resource Deposit.
+export type Workplace = BuildingType | 'outpost'
+
+// Shared shape for Trait and Specialization effects. No `workplaces` = applies everywhere.
+export interface Bonus { workplaces?: Workplace[]; speed?: number; xp?: number; gold?: number; expedition?: number } // expedition: added success chance
 
 export interface JobDef {
   id: string
@@ -96,9 +104,9 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
 
 export type TraitId = 'green_thumb' | 'lumberjack' | 'stonehand' | 'silver_tongue' | 'tireless' | 'quick_learner'
 export const TRAITS: Record<TraitId, Bonus & { name: string; desc: string }> = {
-  green_thumb: { name: 'Green Thumb', desc: '+50% speed at Farms', buildings: ['farm'], speed: 0.5 },
-  lumberjack: { name: 'Lumberjack', desc: '+50% speed at Lumber Camps', buildings: ['lumbercamp'], speed: 0.5 },
-  stonehand: { name: 'Stonehand', desc: '+40% speed at Quarries and Mines', buildings: ['quarry', 'mine'], speed: 0.4 },
+  green_thumb: { name: 'Green Thumb', desc: '+50% speed at Farms', workplaces: ['farm'], speed: 0.5 },
+  lumberjack: { name: 'Lumberjack', desc: '+50% speed at Lumber Camps', workplaces: ['lumbercamp'], speed: 0.5 },
+  stonehand: { name: 'Stonehand', desc: '+40% speed at Quarries, Mines and Outposts', workplaces: ['quarry', 'mine', 'outpost'], speed: 0.4 },
   silver_tongue: { name: 'Silver Tongue', desc: '+25% Gold from all Jobs', gold: 0.25 },
   tireless: { name: 'Tireless', desc: '+15% speed everywhere, +5% Expedition success', speed: 0.15, expedition: 0.05 },
   quick_learner: { name: 'Quick Learner', desc: '+50% XP', xp: 0.5 },
@@ -109,10 +117,10 @@ export const SPEC_LEVEL = 10
 export type SpecId = 'harvester' | 'forester' | 'mason' | 'prospector' | 'merchant' | 'scholar'
 // Requirement: all `req` Attributes met, OR the Villager has `trait` (hidden path).
 export const SPECS: Record<SpecId, Bonus & { name: string; desc: string; req: Partial<Record<Attr, number>>; trait?: TraitId }> = {
-  harvester: { name: 'Harvester', desc: '+100% speed at Farms', req: { end: 8 }, trait: 'green_thumb', buildings: ['farm'], speed: 1 },
-  forester: { name: 'Forester', desc: '+100% speed at Lumber Camps', req: { str: 8 }, trait: 'lumberjack', buildings: ['lumbercamp'], speed: 1 },
-  mason: { name: 'Mason', desc: '+100% speed at Quarries', req: { str: 8, end: 6 }, trait: 'stonehand', buildings: ['quarry'], speed: 1 },
-  prospector: { name: 'Prospector', desc: '+100% speed at Mines, +10% Expedition success', req: { per: 8 }, buildings: ['mine'], speed: 1, expedition: 0.1 },
+  harvester: { name: 'Harvester', desc: '+100% speed at Farms', req: { end: 8 }, trait: 'green_thumb', workplaces: ['farm'], speed: 1 },
+  forester: { name: 'Forester', desc: '+100% speed at Lumber Camps', req: { str: 8 }, trait: 'lumberjack', workplaces: ['lumbercamp'], speed: 1 },
+  mason: { name: 'Mason', desc: '+100% speed at Quarries', req: { str: 8, end: 6 }, trait: 'stonehand', workplaces: ['quarry'], speed: 1 },
+  prospector: { name: 'Prospector', desc: '+100% speed at Mines and Outposts, +10% Expedition success', req: { per: 8 }, workplaces: ['mine', 'outpost'], speed: 1, expedition: 0.1 },
   merchant: { name: 'Merchant', desc: '+50% Gold from all Jobs', req: { cha: 8 }, trait: 'silver_tongue', gold: 0.5 },
   scholar: { name: 'Scholar', desc: '+100% XP', req: { int: 8 }, trait: 'quick_learner', xp: 1 },
 }
@@ -143,6 +151,12 @@ export const EXPEDITION_ATTRS: Attr[] = ['str', 'end', 'per']
 export const EXPEDITION_CHANCE_RANGE: [min: number, max: number] = [0.05, 0.95]
 export const INJURY_CHANCE = 0.4 // per Party member, when an Expedition fails
 export const INJURY_SECONDS = 600 // how long an Injured Villager takes to recover
+
+// Outposts: built on a reached Resource Deposit, worked like a Production Job for its Rare Material.
+export const OUTPOST_COST: Bag = { wood: 60, stone: 30, gold: 40 } // level 1; each upgrade multiplies by UPGRADE_SCALE^level
+export const OUTPOST_SLOTS = 1 // per level
+export const OUTPOST_YIELD = 1 // of the deposit's Rare Material, per cycle and per Outpost level
+export const OUTPOST_JOB: JobDef = { id: 'deposit', name: 'Work the Deposit', kind: 'production', minLevel: 1, duration: 40, attrs: { str: 1, per: 1 }, yields: {}, xp: 5 }
 
 export const NAMES = [
   'Ada', 'Bram', 'Cora', 'Dag', 'Edda', 'Finn', 'Greta', 'Hal', 'Ivy', 'Jory', 'Kaja', 'Leif', 'Mira', 'Nils',

@@ -1,5 +1,5 @@
 // The World Map: Sites around the Settlement, generated once from the seed.
-import { SITE_COUNTS, SITE_MAX_DISTANCE, SITE_NEAR_COUNT, SITE_REVEAL_DISTANCE, type SiteKind } from './data'
+import { RARE_MATERIALS, SITE_COUNTS, SITE_MAX_DISTANCE, SITE_NEAR_COUNT, SITE_REVEAL_DISTANCE, type RareMaterial, type SiteKind } from './data'
 import { mulberry32 } from './random'
 
 export type Discovery = 'hidden' | 'revealed' | 'reached'
@@ -10,6 +10,8 @@ export interface Site {
   distance: number // from the Settlement; nearer Sites will be quicker and safer to reach by Expedition
   angle: number // radians, where the Site sits around the Settlement on the map
   discovery: Discovery
+  material?: RareMaterial // what a Resource Deposit yields
+  outpost?: { level: number } // built on a reached Resource Deposit
 }
 
 /**
@@ -36,4 +38,10 @@ export function generateWorldMap(seed: number): Site[] {
     const angle = Math.round((((sectors[i] + rand() * 0.6) / kinds.length) * 2 * Math.PI) * 100) / 100
     return { id: i + 1, kind, distance, angle, discovery: distance <= SITE_REVEAL_DISTANCE ? 'revealed' : 'hidden' }
   })
+}
+
+/** Gives each Resource Deposit its Rare Material, in turn by id, so every Rare Material is somewhere on the map. */
+export const withMaterials = (map: Site[]): Site[] => {
+  let n = 0
+  return map.map((s) => (s.kind === 'deposit' ? { ...s, material: RARE_MATERIALS[n++ % RARE_MATERIALS.length] } : s))
 }

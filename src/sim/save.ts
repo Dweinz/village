@@ -1,6 +1,6 @@
 // Save format. Pure: the caller supplies the wall-clock time and does the storage I/O (ADR 0001).
 import type { Game } from './game'
-import { generateWorldMap } from './world'
+import { generateWorldMap, withMaterials } from './world'
 
 export interface Save { game: Game; savedAt: number }
 
@@ -17,6 +17,11 @@ export const MIGRATIONS: Migration[] = [
   }),
   (game) => ({ ...game, worldMap: generateWorldMap(game.seed) }), // v3 → v4: the World Map, from the save's current seed
   (game) => ({ ...game, expeditions: [] }), // v4 → v5: Expeditions (none under way in older saves)
+  (game) => ({ // v5 → v6: Rare Materials in the Stockpile and on each Resource Deposit
+    ...game,
+    stock: { crystal: 0, spice: 0, silk: 0, ...game.stock },
+    worldMap: withMaterials(game.worldMap),
+  }),
 ]
 
 export const SAVE_VERSION = MIGRATIONS.length + 1

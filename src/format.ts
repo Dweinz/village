@@ -1,4 +1,5 @@
 // Text formatting for the UI: numbers, durations, and what a Villager is doing.
+import { RES_ICON, type Bag, type Res } from './sim/data'
 import { activityName, recoveryLeft, type Game, type Villager } from './sim/game'
 
 export const fmt = (n: number) => (n < 1000 ? Math.floor(n).toString() : n < 1e6 ? (n / 1e3).toFixed(1) + 'k' : (n / 1e6).toFixed(1) + 'M')
@@ -9,6 +10,9 @@ export function activityText(g: Game, v: Villager) {
   const left = recoveryLeft(g, v)
   return left === undefined ? activityName(g, v) : `${activityName(g, v)} · ${dur(left)}`
 }
+
+/** A cost as text, e.g. "🪵 60 🪨 30". */
+export const costText = (bag: Bag) => Object.entries(bag).map(([r, n]) => `${RES_ICON[r as Res]} ${fmt(n)}`).join(' ')
 
 // How UI components run a player action: the App applies it and shows any Error as a toast.
 export type Act = (fn: (g: Game) => Game) => void

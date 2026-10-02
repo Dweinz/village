@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
-import { advance, assign, build, newGame, sendExpedition } from './sim/game'
-import { SITE_KINDS } from './sim/data'
+import { advance, assign, assignOutpost, build, buildOutpost, newGame, sendExpedition } from './sim/game'
+import { RES_NAME, SITE_KINDS } from './sim/data'
 import { SAVE_KEY, toSave } from './sim/save'
 
 beforeEach(() => { vi.useFakeTimers({ now: new Date('2026-10-02T12:00:00Z') }) })
@@ -45,6 +45,7 @@ test('a corrupt save starts a new game instead of crashing', () => {
   render(<App />)
   expect(screen.getByRole('heading', { name: 'Founding' })).toBeTruthy()
   expect(amount('Gold')).toBe('30')
+  expect(screen.queryByLabelText(/^Crystal /)).toBeNull() // no Rare Materials in the top bar before the World Map
 })
 
 test('trying to unassign a Villager mid-Contract shows why, and they keep working it', () => {
@@ -128,7 +129,7 @@ test('completing Beyond the Walls announces the World Map and shows the button t
 const mapGame = () => {
   const game = newGame(1)
   game.chapter = 4 // World Map unlocked
-  game.stock = { gold: 500, wood: 500, stone: 0, food: 500, ore: 0 }
+  Object.assign(game.stock, { gold: 500, wood: 500, stone: 0, food: 500, ore: 0 })
   return game
 }
 
@@ -241,4 +242,40 @@ test('a Villager hurt on a failed Expedition while the game was closed shows up 
     return
   }
   throw new Error('no seed produced an injury')
+})
+
+test('building and staffing an Outpost on a reached deposit fills the Stockpile with its Rare Material', () => {
+  const game = mapGame()
+  Object.assign(game.stock, { stone: 200 })
+  const site = game.worldMap.find((s) => s.kind === 'deposit')!
+  site.discovery = 'reached'
+  const material = RES_NAME[site.material!]
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  expect(amount(material)).toBe('0') // Rare Materials show in the top bar once the World Map is open
+
+  fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(`^Resource Deposit, distance ${site.distance}`) }))
+  const panel = screen.getByRole('complementary', { name: 'Resource Deposit' })
+  expect(within(panel).getByText(new RegExp(`Yields .*${material}`))).toBeTruthy()
+  fireEvent.click(within(panel).getByRole('button', { name: 'Build Outpost' }))
+
+  const picker = within(panel).getByRole('combobox', { name: 'Assign a Villager to the Outpost' })
+  fireEvent.change(picker, { target: { value: String(game.villagers[0].id) } })
+  expect(screen.getByRole('contentinfo').textContent).toContain(`Work the ${material} Deposit`)
+
+  passTime(200_000)
+  expect(Number(amount(material))).toBeGreaterThan(0)
+})
+
+test('Rare Materials gathered at an Outpost while the game was closed are in the Report', () => {
+  const game = mapGame()
+  Object.assign(game.stock, { stone: 200 })
+  const site = game.worldMap.find((s) => s.kind === 'deposit')!
+  site.discovery = 'reached'
+  const staffed = assignOutpost(buildOutpost(game, site.id), game.villagers[0].id, site.id)
+  localStorage.setItem(SAVE_KEY, toSave(staffed, Date.now() - 3600_000))
+  render(<App />)
+  const report = screen.getByRole('dialog', { name: 'While you were away' })
+  expect(amount(RES_NAME[site.material!], within(report))).toMatch(/^\+/)
 })

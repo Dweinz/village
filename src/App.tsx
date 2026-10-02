@@ -3,7 +3,7 @@ import { Scene } from './Scene'
 import { ExplorePanel, SitePanel, WorldMap } from './WorldMap'
 import { activityText, dur, fmt, type Act } from './format'
 import {
-  ATTRS, ATTR_NAMES, BUILDINGS, RESOURCES, RES_ICON, RES_NAME, SITE_KINDS, SPECS, SPEC_IDS, SPEC_LEVEL, TRAITS,
+  ATTRS, ATTR_NAMES, BUILDINGS, RESOURCES, RES_ICON, RES_NAME, SITE_KINDS, SPECS, isRare, SPEC_IDS, SPEC_LEVEL, TRAITS,
   type Bag, type BuildingType, type Res,
 } from './sim/data'
 import {
@@ -118,7 +118,7 @@ function TopBar({ game, onReset, view, onView }: { game: Game; onReset: () => vo
       {worldMapUnlocked(game) && (view === 'map'
         ? <button className="view" onClick={() => onView('settlement')}>Settlement</button>
         : <button className="view" onClick={() => onView('map')}>World Map</button>)}
-      {RESOURCES.map((r) => <span key={r} className="res" title={RES_NAME[r]} aria-label={`${RES_NAME[r]} ${fmt(game.stock[r])}`}>{RES_ICON[r]} {fmt(game.stock[r])}</span>)}
+      {RESOURCES.filter((r) => !isRare(r) || worldMapUnlocked(game) || game.stock[r] > 0) /* Rare Materials once there's a World Map */.map((r) => <span key={r} className="res" title={RES_NAME[r]} aria-label={`${RES_NAME[r]} ${fmt(game.stock[r])}`}>{RES_ICON[r]} {fmt(game.stock[r])}</span>)}
       <span className="res" title="Villagers / Housing">👥 {game.villagers.length}/{housing(game)}</span>
       {game.starving && <span className="badge warn">Starving</span>}
       <button className="ghost" onClick={onReset} title="New game">↺</button>

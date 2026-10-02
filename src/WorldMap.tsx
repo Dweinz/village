@@ -1,9 +1,10 @@
 // The World Map view: a 2D chart of the Sites around the Settlement. Only reads state and dispatches (ADR 0001).
 import { useState } from 'react'
-import { activityText, dur, type Act } from './format'
+import { activityText, costText, dur, type Act } from './format'
 import { EXPEDITION_ATTRS, EXPEDITION_MAX_PARTY, RES_ICON, RES_NAME, SITE_KINDS, SITE_MAX_DISTANCE, SITE_REVEAL_DISTANCE, SPECS, type Res } from './sim/data'
 import {
-  canJoinExpedition, planExpedition, recallExpedition, sendExpedition, siteById, type ExpeditionTarget, type Game,
+  assignOutpost, buildOutpost, canAfford, canJoinExpedition, outpostCost, outpostMaxLevel, outpostSlots, outpostWorkers, planExpedition,
+  recallExpedition, sendExpedition, siteById, unassign, upgradeOutpost, type ExpeditionTarget, type Game,
 } from './sim/game'
 import type { Site } from './sim/world'
 
@@ -43,7 +44,7 @@ export function WorldMap({ game, selected, onSelect, onExplore, act }: {
             key={s.id}
             className={`site ${selected === s.id ? 'selected' : ''}`}
             style={at(s)}
-            aria-label={`${SITE_KINDS[s.kind].name}, distance ${s.distance}`}
+            aria-label={`${SITE_KINDS[s.kind].name}, distance ${s.distance}${s.outpost ? `, Outpost level ${s.outpost.level}` : ''}`}
             aria-pressed={selected === s.id}
             onClick={() => onSelect(s.id)}
           >
@@ -83,9 +84,46 @@ export function SitePanel({ game, site, act, onClose }: { game: Game; site: Site
       <div className="card">
         <div className="row"><strong>Distance {site.distance}</strong><span className="badge">{site.discovery === 'reached' ? 'Reached' : 'Revealed'}</span></div>
         <p className="muted small">{kind.desc}</p>
+        {site.material && <p className="small">Yields {RES_ICON[site.material]} {RES_NAME[site.material]}</p>}
       </div>
+      {site.kind === 'deposit' && site.discovery === 'reached' && <OutpostCard game={game} site={site} act={act} />}
       {site.discovery === 'revealed' && <PartyPicker key={site.id} game={game} target={{ kind: 'reach', site: site.id }} act={act} />}
     </aside>
+  )
+}
+
+function OutpostCard({ game, site, act }: { game: Game; site: Site; act: Act }) {
+  const outpost = site.outpost
+  if (!outpost) {
+    return (
+      <div className="card row">
+        <span className="small">Outpost: {costText(outpostCost(0))}</span>
+        <button disabled={!canAfford(game, outpostCost(0))} onClick={() => act((g) => buildOutpost(g, site.id))}>Build Outpost</button>
+      </div>
+    )
+  }
+  const staff = outpostWorkers(game, site.id)
+  const atMax = outpost.level >= outpostMaxLevel(game)
+  return (
+    <div className="card">
+      <div className="row"><strong>Outpost <span className="lvl">Lv {outpost.level}</span></strong><span className="muted small">Slots {staff.length}/{outpostSlots(site)}</span></div>
+      <div className="row small">
+        {atMax ? <span className="muted">Upgrade the Town Hall to go higher</span> : <span>Upgrade: {costText(outpostCost(outpost.level))}</span>}
+        <button className="ghost" disabled={atMax || !canAfford(game, outpostCost(outpost.level))} onClick={() => act((g) => upgradeOutpost(g, site.id))}>Upgrade</button>
+      </div>
+      {staff.map((v) => (
+        <div key={v.id} className="row small">
+          <span>{v.name}</span>
+          <button className="ghost small" aria-label={`Unassign ${v.name}`} onClick={() => act((g) => unassign(g, v.id))}>✕</button>
+        </div>
+      ))}
+      {staff.length < outpostSlots(site) && (
+        <select value="" aria-label="Assign a Villager to the Outpost" onChange={(e) => act((g) => assignOutpost(g, Number(e.target.value), site.id))}>
+          <option value="">+ Assign a Villager…</option>
+          {game.villagers.filter((v) => !v.activity).map((v) => <option key={v.id} value={v.id}>{v.name} (Lv {v.level})</option>)}
+        </select>
+      )}
+    </div>
   )
 }
 

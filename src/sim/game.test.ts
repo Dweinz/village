@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { advance, assign, build, demolish, hire, newGame, raise, sendExpedition, unassign, upgrade, workers, type GameEvent } from './game'
+import { advance, assign, assignOutpost, build, buildOutpost, demolish, hire, newGame, raise, sendExpedition, unassign, upgrade, workers, type GameEvent } from './game'
 
 test('a Production Job yields Materials and XP each cycle', () => {
   let g = assign(newGame(1), 1, 2, 'chop')
@@ -8,10 +8,14 @@ test('a Production Job yields Materials and XP each cycle', () => {
   expect(g.villagers[0].xp + g.villagers[0].level).toBeGreaterThan(1)
 })
 
-test('Offline Progress in one big step matches playing it live, Expeditions included', () => {
+test('Offline Progress in one big step matches playing it live, Expeditions and Outposts included', () => {
   const start = assign(assign(newGame(7), 1, 1, 'fields'), 2, 0, 'taxes')
   start.stock.gold = 500
-  const g = sendExpedition(start, [3], { kind: 'explore' }) // back within the 20 minutes, rolled on the way
+  const deposit = start.worldMap.find((s) => s.kind === 'deposit')!
+  deposit.discovery = 'reached'
+  Object.assign(start.stock, { wood: 500, stone: 500 })
+  const staffed = assignOutpost(buildOutpost(unassign(start, 2), deposit.id), 2, deposit.id) // a Villager on an Outpost too
+  const g = sendExpedition(staffed, [3], { kind: 'explore' }) // back within the 20 minutes, rolled on the way
   let live = g
   for (let i = 0; i < 1200; i++) live = advance(live, 1)
   expect(live.expeditions).toHaveLength(0)
@@ -29,7 +33,7 @@ test('running out of Food halves speed instead of killing anyone', () => {
 
 test('completing every Objective advances the Chapter', () => {
   let g = newGame(5)
-  g.stock = { gold: 500, wood: 500, stone: 0, food: 500, ore: 0 }
+  Object.assign(g.stock, { gold: 500, wood: 500, stone: 0, food: 500, ore: 0 })
   g = build(g, 3, 'house')
   g = advance(g, 1) // records wood30 + house
   g.plots[0]!.level = 2
@@ -61,7 +65,7 @@ test('a Villager mid-Contract can be neither unassigned nor reassigned until the
 
 test('demolishing a House frees its Plot, so a Settlement full of Houses can still build its Tavern', () => {
   let g = newGame(1)
-  g.stock = { gold: 5000, wood: 5000, stone: 0, food: 5000, ore: 0 }
+  Object.assign(g.stock, { gold: 5000, wood: 5000, stone: 0, food: 5000, ore: 0 })
   for (let plot = 3; plot < 9; plot++) g = build(g, plot, 'house')
   g = advance(upgrade(g, 0), 1)
   expect(g.chapter).toBe(1) // New Faces opens with "Build a Tavern"
@@ -73,7 +77,7 @@ test('demolishing a House frees its Plot, so a Settlement full of Houses can sti
 
 test('demolishing refunds half of everything paid for the Building, rounded down', () => {
   let g = newGame(1)
-  g.stock = { gold: 500, wood: 500, stone: 0, food: 500, ore: 0 }
+  Object.assign(g.stock, { gold: 500, wood: 500, stone: 0, food: 500, ore: 0 })
   g.plots[0]!.level = 2 // lets the House reach level 2
   g = upgrade(build(g, 3, 'house'), 3) // 30 Wood + 57 Wood
   const before = g.stock.wood
@@ -97,7 +101,7 @@ test('Villagers working in a demolished Building become idle and can be assigned
 
 test('demolishing is refused for the Town Hall, an empty Plot, a Contract in progress, or Housing still needed', () => {
   let g = newGame(1)
-  g.stock = { gold: 500, wood: 500, stone: 0, food: 500, ore: 0 }
+  Object.assign(g.stock, { gold: 500, wood: 500, stone: 0, food: 500, ore: 0 })
   expect(() => demolish(g, 0)).toThrow("The Town Hall can't be demolished")
   expect(() => demolish(g, 4)).toThrow('That plot is empty')
 
@@ -115,7 +119,7 @@ test('demolishing is refused for the Town Hall, an empty Plot, a Contract in pro
 
 test('demolishing keeps completed Objectives, and a unique Building can be built again', () => {
   let g = newGame(1)
-  g.stock = { gold: 500, wood: 500, stone: 0, food: 500, ore: 0 }
+  Object.assign(g.stock, { gold: 500, wood: 500, stone: 0, food: 500, ore: 0 })
   g = advance(build(g, 3, 'house'), 1)
   expect(g.done).toContain('house')
   g = advance(demolish(g, 3), 1)

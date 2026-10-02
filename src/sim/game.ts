@@ -2,11 +2,11 @@
 import {
   ATTRS, BUILDINGS, EXPEDITION_ATTRS, EXPEDITION_BASE_CHANCE, EXPEDITION_CHANCE_PER_DISTANCE, EXPEDITION_CHANCE_PER_POINT,
   EXPEDITION_CHANCE_RANGE, EXPEDITION_FOOD_PER_MEMBER_DISTANCE, EXPEDITION_GOLD_PER_DISTANCE, EXPEDITION_MAX_PARTY,
-  EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, INJURY_CHANCE, INJURY_SECONDS, MAX_BUILDING_LEVEL, NAMES, SPECS, SPEC_LEVEL, TRAITS,
-  TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type JobDef, type Res, type SpecId, type TraitId,
+  EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, INJURY_CHANCE, INJURY_SECONDS, MAX_BUILDING_LEVEL, NAMES, OUTPOST_COST, OUTPOST_JOB, OUTPOST_SLOTS, OUTPOST_YIELD, RES_NAME, SPECS, SPEC_LEVEL, TRAITS,
+  TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type JobDef, type Res, type SpecId, type TraitId, type Workplace,
 } from './data'
 import { mulberry32 } from './random'
-import { generateWorldMap, type Site } from './world'
+import { generateWorldMap, withMaterials, type Site } from './world'
 
 export interface Villager {
   id: number
@@ -23,6 +23,7 @@ export interface Villager {
 // The one thing a Villager is doing. Trade Routes become a further kind (v2).
 export type Activity =
   | { kind: 'job'; plot: number; job: string; progress: number }
+  | { kind: 'outpost'; site: number; progress: number }
   | { kind: 'expedition'; expedition: number }
   | { kind: 'injured'; recoversAt: number } // game time
 
@@ -165,11 +166,11 @@ export const maxLevel = (g: Game, type: BuildingType) => (type === 'townhall' ? 
 export const canAfford = (g: Game, bag: Bag) => Object.entries(bag).every(([r, n]) => g.stock[r as Res] >= n)
 
 const bonuses = (v: Villager): Bonus[] => [...v.traits.map((t) => TRAITS[t]), ...(v.spec ? [SPECS[v.spec]] : [])]
-const applies = (b: Bonus, type: BuildingType) => !b.buildings || b.buildings.includes(type)
-const mult = (v: Villager, type: BuildingType, key: 'xp' | 'gold') =>
+const applies = (b: Bonus, type: Workplace) => !b.workplaces || b.workplaces.includes(type)
+const mult = (v: Villager, type: Workplace, key: 'xp' | 'gold') =>
   bonuses(v).reduce((m, b) => (applies(b, type) ? m * (1 + (b[key] ?? 0)) : m), 1)
 
-export function speed(g: Game, v: Villager, type: BuildingType, job: JobDef) {
+export function speed(g: Game, v: Villager, type: Workplace, job: JobDef) {
   let s = 1 + 0.04 * Object.entries(job.attrs).reduce((n, [a, w]) => n + v.attrs[a as Attr] * w, 0)
   for (const b of bonuses(v)) if (applies(b, type)) s *= 1 + (b.speed ?? 0)
   return g.starving ? s / 2 : s
@@ -184,12 +185,13 @@ export function canSpecialize(g: Game, v: Villager, id: SpecId) {
 const villager = (g: Game, id: number) => g.villagers.find((v) => v.id === id)!
 export const siteById = (g: Game, id: number) => g.worldMap.find((s) => s.id === id)!
 // XP bonuses that apply everywhere (e.g. Quick Learner, Scholar), for XP earned outside a Building.
-const xpMult = (v: Villager) => bonuses(v).reduce((m, b) => (b.buildings ? m : m * (1 + (b.xp ?? 0))), 1)
+const xpMult = (v: Villager) => bonuses(v).reduce((m, b) => (b.workplaces ? m : m * (1 + (b.xp ?? 0))), 1)
 
 /** What a Villager is doing, in words for the player. */
 export function activityName(g: Game, v: Villager) {
   if (v.activity?.kind === 'expedition') return 'Away on an Expedition'
   if (v.activity?.kind === 'injured') return 'Injured'
+  if (v.activity?.kind === 'outpost') return `Work the ${RES_NAME[siteById(g, v.activity.site).material!]} Deposit`
   return jobOf(g, v)?.name ?? 'Idle'
 }
 /**
@@ -231,9 +233,9 @@ function addXp(v: Villager, xp: number, ev: GameEvent[]) {
 
 export function newGame(seed = Date.now()): Game {
   const g: Game = {
-    time: 0, seed, stock: { gold: 30, wood: 20, stone: 0, food: 30, ore: 0 },
+    time: 0, seed, stock: { gold: 30, wood: 20, stone: 0, food: 30, ore: 0, crystal: 0, spice: 0, silk: 0 },
     plots: Array(PLOT_COUNT).fill(null), villagers: [], recruits: [], tavernRefreshAt: 0,
-    chapter: 0, done: [], starving: false, nextId: 1, worldMap: generateWorldMap(seed), expeditions: [],
+    chapter: 0, done: [], starving: false, nextId: 1, worldMap: withMaterials(generateWorldMap(seed)), expeditions: [],
   }
   g.plots[0] = { type: 'townhall', level: 1 }
   g.plots[1] = { type: 'farm', level: 1 }
@@ -273,6 +275,17 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     const goldMult = mult(v, type, 'gold')
     for (const [r, n] of Object.entries(job.yields)) g.stock[r as Res] += r === 'gold' ? n * goldMult : n
     addXp(v, job.xp * mult(v, type, 'xp'), ev)
+  }
+
+  for (const v of g.villagers) {
+    const work = v.activity
+    if (work?.kind !== 'outpost') continue
+    work.progress = Math.min(OUTPOST_JOB.duration, work.progress + s * speed(g, v, 'outpost', OUTPOST_JOB))
+    if (work.progress < OUTPOST_JOB.duration) continue
+    work.progress = 0
+    const site = siteById(g, work.site)
+    g.stock[site.material!] += OUTPOST_YIELD * site.outpost!.level
+    addXp(v, OUTPOST_JOB.xp * mult(v, 'outpost', 'xp'), ev)
   }
 
   for (const v of g.villagers) {
@@ -384,6 +397,47 @@ export const recallExpedition = action((g, id: number) => {
   const x = g.expeditions.find((e) => e.id === id)
   if (!x) throw new Error('That Expedition is already home')
   endExpedition(g, x)
+})
+
+export const outpostCost = (level: number): Bag =>
+  Object.fromEntries(Object.entries(OUTPOST_COST).map(([r, n]) => [r, Math.round(n * UPGRADE_SCALE ** level)]))
+
+export const buildOutpost = action((g, siteId: number) => {
+  const site = findSite(g, siteId)
+  if (site.kind !== 'deposit') throw new Error('Only a Resource Deposit can hold an Outpost')
+  if (site.discovery !== 'reached') throw new Error('Reach this Site first')
+  if (site.outpost) throw new Error('There is already an Outpost here')
+  pay(g, outpostCost(0))
+  site.outpost = { level: 1 }
+})
+
+export const outpostSlots = (site: Site) => OUTPOST_SLOTS * (site.outpost?.level ?? 0)
+export const outpostWorkers = (g: Game, site: number) => g.villagers.filter((v) => v.activity?.kind === 'outpost' && v.activity.site === site)
+
+// An Outpost, like a Building, can't outgrow the Town Hall.
+export const outpostMaxLevel = (g: Game) => g.plots[0]!.level
+const findSite = (g: Game, id: number) => {
+  const site = g.worldMap.find((s) => s.id === id)
+  if (!site) throw new Error('No such Site')
+  return site
+}
+
+export const upgradeOutpost = action((g, siteId: number) => {
+  const outpost = findSite(g, siteId).outpost
+  if (!outpost) throw new Error('There is no Outpost here')
+  if (outpost.level >= outpostMaxLevel(g)) throw new Error('Upgrade the Town Hall first')
+  pay(g, outpostCost(outpost.level))
+  outpost.level++
+})
+
+export const assignOutpost = action((g, villagerId: number, siteId: number) => {
+  const v = villager(g, villagerId)
+  const site = findSite(g, siteId)
+  if (!site.outpost) throw new Error('There is no Outpost here')
+  rejectIfCommitted(g, v)
+  const staff = outpostWorkers(g, siteId)
+  if (!staff.includes(v) && staff.length >= outpostSlots(site)) throw new Error('No free slots')
+  v.activity = { kind: 'outpost', site: siteId, progress: 0 }
 })
 
 export const build = action((g, plot: number, type: BuildingType) => {

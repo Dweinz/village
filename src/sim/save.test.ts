@@ -10,7 +10,7 @@ test('a v1 save loads with its Villagers, Buildings, Stockpile and Chapter progr
   expect(loaded.savedAt).toBe(1790000000000)
   expect(loaded.game.villagers.map((v) => v.name)).toEqual(v1Save.game.villagers.map((v) => v.name))
   expect(loaded.game.plots.map((p) => p?.type ?? null)).toEqual(['townhall', 'farm', 'lumbercamp', 'house', null, null, null, null, null])
-  expect(loaded.game.stock).toEqual(v1Save.game.stock)
+  expect(loaded.game.stock).toEqual({ ...v1Save.game.stock, crystal: 0, spice: 0, silk: 0 })
   expect(loaded.game.done).toEqual(['wood30', 'house'])
   expect(loaded.game.chapter).toBe(v1Save.game.chapter)
 })
@@ -52,6 +52,18 @@ test("the v4 migration's World Map for an old save is pinned, so changing the ge
       "14 deposit d6 a1.86 hidden",
     ]
   `)
+})
+
+test('an old save gains empty Rare Materials and a Rare Material on each Resource Deposit', () => {
+  const g = fromSave(v1Text)!.game
+  expect([g.stock.crystal, g.stock.spice, g.stock.silk]).toEqual([0, 0, 0])
+  expect(g.worldMap.filter((s) => s.kind === 'deposit').every((s) => s.material)).toBe(true)
+})
+
+test("the v6 migration's Rare Materials for an old save's deposits are pinned", () => {
+  // If this fails, withMaterials or RARE_MATERIALS changed: freeze the old version into the v5 → v6 migration instead.
+  const deposits = fromSave(v1Text)!.game.worldMap.filter((s) => s.kind === 'deposit')
+  expect(deposits.map((s) => `${s.id} ${s.material}`)).toEqual(['1 crystal', '5 spice', '7 silk', '12 crystal', '14 spice'])
 })
 
 test('a v1 save keeps playing: its Jobs keep producing and it can finish the Founding Chapter', () => {
