@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
 import { assign, build, newGame } from './sim/game'
+import { SITE_KINDS } from './sim/data'
 import { SAVE_KEY, toSave } from './sim/save'
 
 beforeEach(() => { vi.useFakeTimers({ now: new Date('2026-10-02T12:00:00Z') }) })
@@ -77,4 +78,49 @@ test('demolishing a House asks first, then empties the Plot and refunds half its
   expect(confirm).toHaveBeenCalledTimes(2)
   expect(screen.getByRole('heading', { name: 'Empty Plot' })).toBeTruthy()
   expect(amount('Wood')).toBe('85')
+})
+
+test('the World Map opens once unlocked: revealed Sites can be inspected, the rest is fog', () => {
+  const locked = newGame(1)
+  locked.chapter = 3
+  localStorage.setItem(SAVE_KEY, toSave(locked, Date.now()))
+  const { unmount } = render(<App />)
+  expect(screen.queryByRole('button', { name: 'World Map' })).toBeNull()
+  unmount()
+
+  const game = newGame(1)
+  game.chapter = 4 // Beyond the Walls complete
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+
+  const map = screen.getByRole('region', { name: 'World Map' })
+  const revealed = game.worldMap.filter((s) => s.discovery === 'revealed')
+  const sites = within(map).getAllByRole('button', { name: /distance/ })
+  expect(sites).toHaveLength(revealed.length) // hidden Sites stay under the fog
+  expect(within(map).getByText(`${game.worldMap.length - revealed.length} Sites hidden in the fog`)).toBeTruthy()
+
+  fireEvent.click(sites[0])
+  const site = revealed[0]
+  const panel = screen.getByRole('complementary', { name: SITE_KINDS[site.kind].name })
+  expect(within(panel).getByText(`Distance ${site.distance}`)).toBeTruthy()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Settlement' }))
+  expect(screen.queryByRole('region', { name: 'World Map' })).toBeNull()
+  expect(screen.getByRole('button', { name: 'Plot 1' })).toBeTruthy()
+})
+
+test('completing Beyond the Walls announces the World Map and shows the button to open it', () => {
+  const game = newGame(1)
+  Object.assign(game, { chapter: 3 })
+  game.plots[0]!.level = 4
+  game.plots[3] = { type: 'mine', level: 1 }
+  game.stock.ore = 50 // every Objective of Beyond the Walls is met
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  expect(screen.queryByRole('button', { name: 'World Map' })).toBeNull()
+
+  passTime(1000)
+  expect(screen.getByText(/The World Map is open/)).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'World Map' })).toBeTruthy()
 })

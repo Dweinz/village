@@ -118,6 +118,18 @@ export const SPECS: Record<SpecId, Bonus & { name: string; desc: string; req: Pa
 }
 export const SPEC_IDS = Object.keys(SPECS) as SpecId[]
 
+export type SiteKind = 'deposit' | 'ruin' | 'land' | 'city'
+export const SITE_KINDS: Record<SiteKind, { name: string; icon: string; desc: string }> = {
+  deposit: { name: 'Resource Deposit', icon: '💎', desc: 'Rare Materials lie here. An Outpost could work them.' },
+  ruin: { name: 'Ruin', icon: '🏛️', desc: 'Something old waits inside, for a party brave enough.' },
+  land: { name: 'Empty Land', icon: '🌿', desc: 'Open ground, room for another Settlement one day.' },
+  city: { name: 'Foreign City', icon: '🏰', desc: 'A city that is not yours. Its merchants may trade.' },
+}
+export const SITE_COUNTS: Record<SiteKind, number> = { deposit: 5, ruin: 3, land: 3, city: 3 }
+export const SITE_REVEAL_DISTANCE = 3 // Sites this close start revealed; the rest are under fog
+export const SITE_NEAR_COUNT = 3 // how many Sites a new World Map places inside the revealed area
+export const SITE_MAX_DISTANCE = 10
+
 export const NAMES = [
   'Ada', 'Bram', 'Cora', 'Dag', 'Edda', 'Finn', 'Greta', 'Hal', 'Ivy', 'Jory', 'Kaja', 'Leif', 'Mira', 'Nils',
   'Orla', 'Pim', 'Quinn', 'Runa', 'Sten', 'Tove', 'Ulla', 'Vidar', 'Wren', 'Ylva',

@@ -3,6 +3,8 @@ import {
   ATTRS, BUILDINGS, MAX_BUILDING_LEVEL, NAMES, SPECS, SPEC_LEVEL, TRAITS, TRAIT_IDS, UPGRADE_SCALE,
   type Attr, type Bag, type Bonus, type BuildingType, type JobDef, type Res, type SpecId, type TraitId,
 } from './data'
+import { mulberry32 } from './random'
+import { generateWorldMap, type Site } from './world'
 
 export interface Villager {
   id: number
@@ -33,6 +35,7 @@ export interface Game {
   done: string[] // completed Objective ids
   starving: boolean
   nextId: number
+  worldMap: Site[]
 }
 
 export type GameEvent =
@@ -40,6 +43,7 @@ export type GameEvent =
   | { kind: 'contract'; name: string; job: string }
   | { kind: 'chapter'; chapter: number }
   | { kind: 'starving' }
+  | { kind: 'worldMap' }
 
 export const UPKEEP = 0.08 // Food per Villager per second
 export const MAX_LEVEL = 30
@@ -78,15 +82,25 @@ export const CHAPTERS: { name: string; objectives: Objective[] }[] = [
       { id: 'spec', text: 'Specialize a Villager', check: (g) => g.villagers.some((v) => v.spec) },
     ],
   },
+  {
+    name: 'Beyond the Walls',
+    objectives: [
+      { id: 'th4', text: 'Upgrade the Town Hall to level 4', check: (g) => has(g, 'townhall', 4) },
+      { id: 'mine', text: 'Build a Mine', check: (g) => has(g, 'mine') },
+      { id: 'ore50', text: 'Stockpile 50 Ore', check: (g) => g.stock.ore >= 50 },
+    ],
+  },
 ]
+
+export const WORLD_MAP_CHAPTER = 4 // completing Beyond the Walls opens the World Map
+export const worldMapUnlocked = (g: Game) => g.chapter >= WORLD_MAP_CHAPTER
 
 // --- Helpers ----------------------------------------------------------------
 
-function rand(g: Game) { // mulberry32, seed lives in state so the sim stays deterministic
-  let t = (g.seed = (g.seed + 0x6d2b79f5) | 0)
-  t = Math.imul(t ^ (t >>> 15), t | 1)
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+function rand(g: Game) { // the seed lives in state so the sim stays deterministic
+  const [value, next] = mulberry32(g.seed)
+  g.seed = next
+  return value
 }
 const pick = <T,>(g: Game, arr: readonly T[]) => arr[Math.floor(rand(g) * arr.length)]
 
@@ -163,7 +177,7 @@ export function newGame(seed = Date.now()): Game {
   const g: Game = {
     time: 0, seed, stock: { gold: 30, wood: 20, stone: 0, food: 30, ore: 0 },
     plots: Array(PLOT_COUNT).fill(null), villagers: [], recruits: [], tavernRefreshAt: 0,
-    chapter: 0, done: [], starving: false, nextId: 1,
+    chapter: 0, done: [], starving: false, nextId: 1, worldMap: generateWorldMap(seed),
   }
   g.plots[0] = { type: 'townhall', level: 1 }
   g.plots[1] = { type: 'farm', level: 1 }
@@ -216,6 +230,7 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     if (ch.objectives.every((o) => g.done.includes(o.id))) {
       g.chapter++
       ev.push({ kind: 'chapter', chapter: g.chapter })
+      if (g.chapter === WORLD_MAP_CHAPTER) ev.push({ kind: 'worldMap' })
     }
   }
 }

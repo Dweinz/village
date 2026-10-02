@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Scene } from './Scene'
+import { SitePanel, WorldMap } from './WorldMap'
 import {
   ATTRS, ATTR_NAMES, BUILDINGS, RESOURCES, RES_ICON, RES_NAME, SPECS, SPEC_IDS, SPEC_LEVEL, TRAITS,
   type Bag, type BuildingType, type Res,
 } from './sim/data'
 import {
   CHAPTERS, OFFLINE_CAP, REROLL_COST, advance, assign, build, buildCost, canAfford, canSpecialize, currentJob, demolish, demolishRefund, jobOf, plotHousing, hire,
-  hireCost, housing, jobsFor, maxLevel, newGame, raise, reroll, slots, specialize, unassign, upgrade, workers, xpToNext,
+  hireCost, housing, jobsFor, maxLevel, newGame, raise, reroll, slots, specialize, unassign, upgrade, workers, worldMapUnlocked, xpToNext,
   type Game, type GameEvent, type Villager,
 } from './sim/game'
 import { SAVE_KEY, fromSave, toSave } from './sim/save'
@@ -40,8 +41,9 @@ function describe(e: GameEvent) {
   switch (e.kind) {
     case 'level': return `⭐ ${e.name} reached level ${e.level}`
     case 'contract': return `📜 ${e.name} finished ${e.job}`
-    case 'chapter': return CHAPTERS[e.chapter] ? `📖 Chapter ${e.chapter + 1}: ${CHAPTERS[e.chapter].name}` : '🏆 All Chapters complete — more in v2!'
+    case 'chapter': return CHAPTERS[e.chapter] ? `📖 Chapter ${e.chapter + 1}: ${CHAPTERS[e.chapter].name}` : '🏆 All Chapters complete — Expeditions are coming next!'
     case 'starving': return '⚠️ Food ran out — everyone works at half speed'
+    case 'worldMap': return '🗺️ The World Map is open: see what lies beyond the walls'
   }
 }
 
@@ -50,6 +52,8 @@ export default function App() {
   const [game, setGame] = useState(initial.game)
   const [report, setReport] = useState(initial.report)
   const [selected, setSelected] = useState<number | null>(null)
+  const [view, setView] = useState<View>('settlement')
+  const [site, setSite] = useState<number | null>(null)
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([])
   const ref = useRef(game)
   const resetting = useRef(false)
@@ -86,10 +90,13 @@ export default function App() {
 
   return (
     <>
-      <Scene game={game} selected={selected} onSelect={setSelected} />
-      <TopBar game={game} onReset={reset} />
+      {view === 'map'
+        ? <WorldMap game={game} selected={site} onSelect={setSite} />
+        : <Scene game={game} selected={selected} onSelect={setSelected} />}
+      <TopBar game={game} onReset={reset} view={view} onView={(v) => { setView(v); setSite(null) }} />
       <Objectives game={game} />
-      {selected !== null && <PlotPanel game={game} plot={selected} act={act} onClose={() => setSelected(null)} />}
+      {view === 'settlement' && selected !== null && <PlotPanel game={game} plot={selected} act={act} onClose={() => setSelected(null)} />}
+      {view === 'map' && site !== null && <SitePanel site={game.worldMap.find((s) => s.id === site)!} onClose={() => setSite(null)} />}
       <Roster game={game} act={act} />
       <div className="toasts">{toasts.map((t) => <div key={t.id} className="toast">{t.text}</div>)}</div>
       {report && <ReportModal report={report} onClose={() => setReport(null)} />}
@@ -98,11 +105,15 @@ export default function App() {
 }
 
 type Act = (fn: (g: Game) => Game) => void
+type View = 'settlement' | 'map'
 
-function TopBar({ game, onReset }: { game: Game; onReset: () => void }) {
+function TopBar({ game, onReset, view, onView }: { game: Game; onReset: () => void; view: View; onView: (v: View) => void }) {
   return (
     <header className="panel topbar">
       <strong className="logo">Hearthhold</strong>
+      {worldMapUnlocked(game) && (view === 'map'
+        ? <button className="view" onClick={() => onView('settlement')}>Settlement</button>
+        : <button className="view" onClick={() => onView('map')}>World Map</button>)}
       {RESOURCES.map((r) => <span key={r} className="res" title={RES_NAME[r]} aria-label={`${RES_NAME[r]} ${fmt(game.stock[r])}`}>{RES_ICON[r]} {fmt(game.stock[r])}</span>)}
       <span className="res" title="Villagers / Housing">👥 {game.villagers.length}/{housing(game)}</span>
       {game.starving && <span className="badge warn">Starving</span>}
@@ -121,7 +132,7 @@ function Objectives({ game }: { game: Game }) {
           <h2>{ch.name}</h2>
           <ul>{ch.objectives.map((o) => <li key={o.id} className={game.done.includes(o.id) ? 'done' : ''}>{o.text}</li>)}</ul>
         </>
-      ) : <><div className="eyebrow">v1 complete</div><h2>Your town thrives</h2><p className="muted">Expeditions arrive in v2.</p></>}
+      ) : <><div className="eyebrow">All Chapters complete</div><h2>Your town thrives</h2><p className="muted">Expeditions are coming next.</p></>}
     </aside>
   )
 }

@@ -24,6 +24,36 @@ test('a v1 save keeps every Villager on the Job they were working, with their pr
     .toEqual(v1Save.game.villagers.map((v) => [v.job.job, v.job.progress]))
 })
 
+test('an old save gains a World Map generated from its seed, the same one every time it loads', () => {
+  const map = fromSave(v1Text)!.game.worldMap
+  expect(map.length).toBeGreaterThan(0)
+  expect(map.some((s) => s.discovery === 'revealed')).toBe(true)
+  expect(fromSave(v1Text)!.game.worldMap).toEqual(map)
+})
+
+test("the v4 migration's World Map for an old save is pinned, so changing the generator can't silently alter it", () => {
+  // If this fails, generateWorldMap changed: copy its v4 version into the v3 → v4 migration instead of updating this.
+  const map = fromSave(v1Text)!.game.worldMap
+  expect(map.map((s) => `${s.id} ${s.kind} d${s.distance} a${s.angle} ${s.discovery}`)).toMatchInlineSnapshot(`
+    [
+      "1 deposit d2 a2.91 revealed",
+      "2 ruin d1 a1.35 revealed",
+      "3 city d1 a4.69 revealed",
+      "4 ruin d7 a2.41 hidden",
+      "5 deposit d8 a3.39 hidden",
+      "6 land d6 a5.61 hidden",
+      "7 deposit d10 a1.1 hidden",
+      "8 ruin d6 a6.06 hidden",
+      "9 city d4 a0.07 hidden",
+      "10 land d9 a3.66 hidden",
+      "11 city d5 a0.64 hidden",
+      "12 deposit d8 a4.3 hidden",
+      "13 land d7 a5.08 hidden",
+      "14 deposit d6 a1.86 hidden",
+    ]
+  `)
+})
+
 test('a v1 save keeps playing: its Jobs keep producing and it can finish the Founding Chapter', () => {
   let g = fromSave(v1Text)!.game
   g = advance(g, 60)

@@ -42,6 +42,7 @@ select { width: 100%; margin-top: 8px; background: rgba(47, 125, 109, 0.12); col
 
 .topbar { top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 16px; padding: 8px 16px; white-space: nowrap; }
 .logo { font-size: 16px; letter-spacing: -0.02em; margin-right: 4px; }
+.topbar .view { padding: 5px 12px; }
 .res { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 14px; }
 .badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: rgba(0, 0, 0, 0.07); }
 .badge.warn { background: var(--warn); color: white; animation: pulse 1.2s infinite; }
@@ -91,6 +92,16 @@ select { width: 100%; margin-top: 8px; background: rgba(47, 125, 109, 0.12); col
 .events { text-align: left; font-size: 13px; padding-left: 18px; max-height: 160px; overflow-y: auto; }
 .modal button { margin-top: 10px; width: 100%; padding: 10px; }
 
+.worldmap { position: fixed; inset: 0; display: grid; place-items: center; padding: 70px 16px 230px; }
+.worldmap .board { position: relative; width: min(100%, calc(100vh - 300px)); min-width: 240px; aspect-ratio: 1; }
+.worldmap svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.worldmap .land { fill: #cfe3c4; stroke: rgba(47, 125, 109, 0.35); stroke-width: 0.6; }
+.worldmap .ring { fill: none; stroke: rgba(47, 125, 109, 0.18); stroke-width: 0.3; stroke-dasharray: 1 1.5; }
+.worldmap .home, .worldmap .site { position: absolute; transform: translate(-50%, -50%); font-size: 22px; line-height: 1; }
+.worldmap .site { padding: 6px; border-radius: 50%; background: var(--glass); box-shadow: 0 2px 8px rgba(20, 50, 60, 0.2); }
+.worldmap .site.selected { outline: 3px solid var(--accent-2); }
+.fog-note { position: absolute; bottom: 205px; margin: 0; }
+
 @media (max-width: 760px) {
   .topbar { gap: 10px; font-size: 12px; left: 8px; right: 8px; transform: none; overflow-x: auto; }
   .logo { display: none; }
@@ -98,4 +109,5 @@ select { width: 100%; margin-top: 8px; background: rgba(47, 125, 109, 0.12); col
   .objectives ul { display: none; }
   .side { left: 8px; right: 8px; width: auto; top: auto; bottom: 200px; max-height: 45vh; }
   .villager { flex-basis: 180px; }
+  .worldmap { padding-top: 110px; }
 }

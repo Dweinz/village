@@ -1,5 +1,6 @@
 // Save format. Pure: the caller supplies the wall-clock time and does the storage I/O (ADR 0001).
 import type { Game } from './game'
+import { generateWorldMap } from './world'
 
 export interface Save { game: Game; savedAt: number }
 
@@ -14,6 +15,7 @@ export const MIGRATIONS: Migration[] = [
     ...game,
     villagers: game.villagers.map(({ job, ...v }: { job?: object }) => (job ? { ...v, activity: { kind: 'job', ...job } } : v)),
   }),
+  (game) => ({ ...game, worldMap: generateWorldMap(game.seed) }), // v3 → v4: the World Map, from the save's current seed
 ]
 
 export const SAVE_VERSION = MIGRATIONS.length + 1
