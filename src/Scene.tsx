@@ -3,7 +3,7 @@ import { OrbitControls, SoftShadows } from '@react-three/drei'
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Group } from 'three'
 import type { BuildingType } from './sim/data'
-import type { Game, Villager } from './sim/game'
+import { currentJob, type Game, type Villager } from './sim/game'
 
 export const PLOT_POS: [number, number][] = [
   [0, 0],
@@ -150,14 +150,15 @@ const VILLAGER_COLORS = ['#e07a5f', '#3d85c6', '#81b29a', '#f2cc8f', '#9b5de5', 
 function VillagerView({ v, index }: { v: Villager; index: number }) {
   const ref = useRef<Group>(null)
   // Workers stand at their plot's edge, idle Villagers mill around the Town Hall plaza.
-  const [bx, bz] = v.job ? PLOT_POS[v.job.plot] : [0, 0]
+  const work = currentJob(v)
+  const [bx, bz] = work ? PLOT_POS[work.plot] : [0, 0]
   const a = index * 2.4
-  const r = v.job ? 1.6 : 2.4
+  const r = work ? 1.6 : 2.4
   useFrame(({ clock }) => {
     const t = clock.elapsedTime + v.id
     const g = ref.current!
-    const wander = v.job ? 0 : Math.sin(t * 0.3) * 0.6
-    g.position.set(bx + Math.cos(a + wander) * r, Math.abs(Math.sin(t * (v.job ? 6 : 2))) * (v.job ? 0.12 : 0.05), bz + Math.sin(a + wander) * r)
+    const wander = work ? 0 : Math.sin(t * 0.3) * 0.6
+    g.position.set(bx + Math.cos(a + wander) * r, Math.abs(Math.sin(t * (work ? 6 : 2))) * (work ? 0.12 : 0.05), bz + Math.sin(a + wander) * r)
   })
   const c = VILLAGER_COLORS[v.id % VILLAGER_COLORS.length]
   return (

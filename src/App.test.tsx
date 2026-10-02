@@ -45,3 +45,18 @@ test('a corrupt save starts a new game instead of crashing', () => {
   expect(screen.getByRole('heading', { name: 'Founding' })).toBeTruthy()
   expect(amount('Gold')).toBe('30')
 })
+
+test('trying to unassign a Villager mid-Contract shows why, and they keep working it', () => {
+  const game = newGame(1)
+  game.plots[0]!.level = 2 // unlocks Settle a Dispute at the Town Hall
+  const name = game.villagers[0].name
+  localStorage.setItem(SAVE_KEY, toSave(assign(game, game.villagers[0].id, 0, 'dispute'), Date.now()))
+  render(<App />)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Plot 1' }))
+  fireEvent.click(screen.getByRole('button', { name: `Unassign ${name}` }))
+
+  expect(screen.getByText(`${name} is busy with a Contract`)).toBeTruthy()
+  expect(screen.getByRole('button', { name: `Unassign ${name}` })).toBeTruthy() // still on the Plot panel
+  expect(screen.getByRole('contentinfo').textContent).toContain('Settle a Dispute') // Roster shows the Contract
+})

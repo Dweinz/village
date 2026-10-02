@@ -5,7 +5,7 @@ import {
   type Bag, type BuildingType, type Res,
 } from './sim/data'
 import {
-  CHAPTERS, OFFLINE_CAP, REROLL_COST, advance, assign, build, buildCost, canAfford, canSpecialize, findJob, hire,
+  CHAPTERS, OFFLINE_CAP, REROLL_COST, advance, assign, build, buildCost, canAfford, canSpecialize, currentJob, jobOf, hire,
   hireCost, housing, jobsFor, maxLevel, newGame, raise, reroll, slots, specialize, unassign, upgrade, workers, xpToNext,
   type Game, type GameEvent, type Villager,
 } from './sim/game'
@@ -151,7 +151,7 @@ function PlotPanel({ game, plot, act, onClose }: { game: Game; plot: number; act
 
   const def = BUILDINGS[p.type]
   const here = workers(game, plot)
-  const idle = game.villagers.filter((v) => !v.job)
+  const idle = game.villagers.filter((v) => !v.activity)
   const atMax = p.level >= maxLevel(game, p.type)
   return (
     <aside className="panel side">
@@ -175,11 +175,11 @@ function PlotPanel({ game, plot, act, onClose }: { game: Game; plot: number; act
             {dur(j.duration)} · <Cost bag={j.yields} /> {j.xp} XP{j.cost && <> · costs <Cost bag={j.cost} game={game} /></>}
             {' · '}{Object.keys(j.attrs).map((a) => ATTR_NAMES[a as keyof typeof ATTR_NAMES]).join(', ')}
           </div>
-          {here.filter((v) => v.job!.job === j.id).map((v) => (
+          {here.filter((v) => currentJob(v)!.job === j.id).map((v) => (
             <div key={v.id} className="worker">
               <span>{v.name}</span>
-              <div className="bar"><i style={{ width: `${(v.job!.progress / j.duration) * 100}%` }} /></div>
-              <button className="ghost small" onClick={() => act((g) => unassign(g, v.id))} title="Unassign">✕</button>
+              <div className="bar"><i style={{ width: `${(currentJob(v)!.progress / j.duration) * 100}%` }} /></div>
+              <button className="ghost small" onClick={() => act((g) => unassign(g, v.id))} title="Unassign" aria-label={`Unassign ${v.name}`}>✕</button>
             </div>
           ))}
           {here.length < slots(p) && idle.length > 0 && (
@@ -240,7 +240,7 @@ function Roster({ game, act }: { game: Game; act: Act }) {
     <footer className="roster">
       {game.villagers.map((v) => {
         const options = SPEC_IDS.filter((s) => canSpecialize(game, v, s))
-        const job = v.job && findJob(game.plots[v.job.plot]!.type, v.job.job)
+        const job = jobOf(game, v)
         return (
           <div key={v.id} className="panel villager">
             <div className="row"><strong>{v.name}</strong><span className="lvl">Lv {v.level}</span></div>

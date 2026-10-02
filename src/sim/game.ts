@@ -13,8 +13,11 @@ export interface Villager {
   attrs: Record<Attr, number>
   traits: TraitId[]
   spec?: SpecId
-  job?: { plot: number; job: string; progress: number }
+  activity?: Activity // undefined = idle
 }
+
+// The one thing a Villager is doing. Expeditions, Trade Routes and Injured become further kinds (v2).
+export type Activity = { kind: 'job'; plot: number; job: string; progress: number }
 
 export type Plot = { type: BuildingType; level: number } | null
 
@@ -100,7 +103,9 @@ function makeVillager(g: Game): Villager {
 
 export const housing = (g: Game) => g.plots.reduce((n, p) => n + (p ? (BUILDINGS[p.type].housing ?? 0) * p.level : 0), 0)
 export const slots = (p: NonNullable<Plot>) => BUILDINGS[p.type].slots * p.level
-export const workers = (g: Game, plot: number) => g.villagers.filter((v) => v.job?.plot === plot)
+export const currentJob = (v: Villager) => (v.activity?.kind === 'job' ? v.activity : undefined)
+export const jobOf = (g: Game, v: Villager) => { const work = currentJob(v); return work && findJob(g.plots[work.plot]!.type, work.job) }
+export const workers = (g: Game, plot: number) => g.villagers.filter((v) => currentJob(v)?.plot === plot)
 export const jobsFor = (p: NonNullable<Plot>) => BUILDINGS[p.type].jobs.filter((j) => j.minLevel <= p.level)
 export const findJob = (type: BuildingType, id: string) => BUILDINGS[type].jobs.find((j) => j.id === id)!
 export const xpToNext = (level: number) => Math.round(10 * level ** 1.6)
@@ -172,17 +177,18 @@ function step(g: Game, s: number, ev: GameEvent[]) {
   }
 
   for (const v of g.villagers) {
-    if (!v.job) continue
-    const type = g.plots[v.job.plot]!.type
-    const job = findJob(type, v.job.job)
-    v.job.progress = Math.min(job.duration, v.job.progress + s * speed(g, v, type, job))
-    if (v.job.progress < job.duration) continue
+    const work = currentJob(v)
+    if (!work) continue
+    const type = g.plots[work.plot]!.type
+    const job = findJob(type, work.job)
+    work.progress = Math.min(job.duration, work.progress + s * speed(g, v, type, job))
+    if (work.progress < job.duration) continue
     if (job.kind === 'production') {
       if (job.cost && !canAfford(g, job.cost)) continue // stalls until it can pay
       if (job.cost) pay(g, job.cost)
-      v.job.progress = 0
+      work.progress = 0
     } else {
-      v.job = undefined
+      v.activity = undefined
       ev.push({ kind: 'contract', name: v.name, job: job.name })
     }
     const goldMult = mult(v, type, 'gold')
@@ -221,6 +227,10 @@ const action = <A extends unknown[]>(fn: (g: Game, ...a: A) => void) => (g0: Gam
   return g
 }
 const villager = (g: Game, id: number) => g.villagers.find((v) => v.id === id)!
+// A Contract can't be abandoned or swapped: its cost is already paid.
+const rejectIfOnContract = (g: Game, v: Villager) => {
+  if (jobOf(g, v)?.kind === 'contract') throw new Error(`${v.name} is busy with a Contract`)
+}
 
 export const build = action((g, plot: number, type: BuildingType) => {
   const def = BUILDINGS[type]
@@ -243,13 +253,17 @@ export const assign = action((g, id: number, plot: number, jobId: string) => {
   const p = g.plots[plot]!
   const job = jobsFor(p).find((j) => j.id === jobId)
   if (!job) throw new Error('Job not available')
-  if (v.job && findJob(g.plots[v.job.plot]!.type, v.job.job).kind === 'contract') throw new Error(`${v.name} is busy with a Contract`)
-  if (v.job?.plot !== plot && workers(g, plot).length >= slots(p)) throw new Error('No free slots')
+  rejectIfOnContract(g, v)
+  if (currentJob(v)?.plot !== plot && workers(g, plot).length >= slots(p)) throw new Error('No free slots')
   if (job.kind === 'contract' && job.cost) pay(g, job.cost)
-  v.job = { plot, job: jobId, progress: 0 }
+  v.activity = { kind: 'job', plot, job: jobId, progress: 0 }
 })
 
-export const unassign = action((g, id: number) => { villager(g, id).job = undefined })
+export const unassign = action((g, id: number) => {
+  const v = villager(g, id)
+  rejectIfOnContract(g, v)
+  v.activity = undefined
+})
 
 export const hire = action((g, index: number) => {
   if (g.villagers.length >= housing(g)) throw new Error('Not enough Housing')

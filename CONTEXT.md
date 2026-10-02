@@ -58,6 +58,10 @@ _Avoid_: Wounded, dead, knocked out
 
 ### Activities
 
+**Activity**:
+The one thing a Villager is doing at a time: working a Job (and, from v2, an Expedition, a Trade Route, or being Injured). A Villager with no Activity is idle.
+_Avoid_: Task, status, assignment
+
 **Job**:
 Work a Villager does in a Building that yields XP, Gold, or Materials. A Job is either a Production Job or a Contract.
 _Avoid_: Mission, task, quest

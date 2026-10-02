@@ -10,6 +10,10 @@ type Migration = (game: any) => any // old save shapes aren't typed
 /** MIGRATIONS[i] turns a version i+1 game into version i+2. Append one whenever the shape of Game changes. */
 export const MIGRATIONS: Migration[] = [
   (game) => game, // v1 → v2: v1 saves had no version number; the game shape is unchanged
+  (game) => ({ // v2 → v3: a Villager's optional `job` became their one `activity`
+    ...game,
+    villagers: game.villagers.map(({ job, ...v }: { job?: object }) => (job ? { ...v, activity: { kind: 'job', ...job } } : v)),
+  }),
 ]
 
 export const SAVE_VERSION = MIGRATIONS.length + 1

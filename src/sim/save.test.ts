@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { advance, assign, newGame, upgrade, type Game } from './game'
+import { advance, assign, currentJob, newGame, upgrade, workers, type Game } from './game'
 import { fromSave, toSave } from './save'
 import v1Save from './fixtures/v1-save.json'
 
@@ -13,6 +13,15 @@ test('a v1 save loads with its Villagers, Buildings, Stockpile and Chapter progr
   expect(loaded.game.stock).toEqual(v1Save.game.stock)
   expect(loaded.game.done).toEqual(['wood30', 'house'])
   expect(loaded.game.chapter).toBe(v1Save.game.chapter)
+})
+
+test('a v1 save keeps every Villager on the Job they were working, with their progress', () => {
+  const g = fromSave(v1Text)!.game
+  const onJob = (plot: number) => workers(g, plot).map((v) => v.name)
+  const [first, second, third] = v1Save.game.villagers.map((v) => v.name)
+  expect([onJob(1), onJob(2), onJob(0)]).toEqual([[first], [second], [third]]) // Farm, Lumber Camp, Town Hall
+  expect(g.villagers.map((v) => currentJob(v) && [currentJob(v)!.job, currentJob(v)!.progress]))
+    .toEqual(v1Save.game.villagers.map((v) => [v.job.job, v.job.progress]))
 })
 
 test('a v1 save keeps playing: its Jobs keep producing and it can finish the Founding Chapter', () => {

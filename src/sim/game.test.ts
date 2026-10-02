@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { advance, assign, build, newGame, raise, type GameEvent } from './game'
+import { advance, assign, build, newGame, raise, unassign, workers, type GameEvent } from './game'
 
 test('a Production Job yields Materials and XP each cycle', () => {
   let g = assign(newGame(1), 1, 2, 'chop')
@@ -41,4 +41,17 @@ test('actions reject what the player cannot do', () => {
   expect(() => build(g, 3, 'tavern')).toThrow('not unlocked')
   expect(() => build(g, 1, 'house')).toThrow('taken')
   expect(() => raise(g, 1, 'str')).toThrow('No Attribute points')
+})
+
+test('a Villager mid-Contract can be neither unassigned nor reassigned until the Contract is done', () => {
+  let g = newGame(4)
+  g.plots[0]!.level = 2 // unlocks Settle a Dispute
+  g = assign(g, 1, 0, 'dispute')
+  expect(() => unassign(g, 1)).toThrow('busy with a Contract')
+  expect(() => assign(g, 1, 1, 'fields')).toThrow('busy with a Contract')
+
+  g = advance(g, 90) // the Contract's full duration, at speed ≥ 1
+  expect(workers(g, 0)).toHaveLength(0)
+  g = unassign(assign(g, 1, 1, 'fields'), 1)
+  expect(workers(g, 1)).toHaveLength(0)
 })
