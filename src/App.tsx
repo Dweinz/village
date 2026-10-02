@@ -40,7 +40,7 @@ function describe(e: GameEvent) {
   switch (e.kind) {
     case 'level': return `⭐ ${e.name} reached level ${e.level}`
     case 'contract': return `📜 ${e.name} finished ${e.job}`
-    case 'chapter': return CHAPTERS[e.chapter] ? `📖 Chapter ${e.chapter + 1}: ${CHAPTERS[e.chapter].name}` : '🏆 All Chapters complete: explore the World Map while more is on the way'
+    case 'chapter': return CHAPTERS[e.chapter] ? `📖 Chapter ${e.chapter + 1}: ${CHAPTERS[e.chapter].name}` : '🏆 All Chapters complete: more is coming in v3'
     case 'starving': return '⚠️ Food ran out — everyone works at half speed'
     case 'worldMap': return '🗺️ The World Map is open: see what lies beyond the walls'
     case 'expeditionSucceeded': return `🧭 ${e.party.join(', ')} ${e.goal === 'reach' ? 'reached' : 'found'} a ${SITE_KINDS[e.site].name}`
@@ -132,14 +132,14 @@ function TopBar({ game, onReset, view, onView }: { game: Game; onReset: () => vo
 function Objectives({ game }: { game: Game }) {
   const ch = CHAPTERS[game.chapter]
   return (
-    <aside className="panel objectives">
+    <aside className="panel objectives" aria-label="Objectives">
       {ch ? (
         <>
           <div className="eyebrow">Chapter {game.chapter + 1}</div>
           <h2>{ch.name}</h2>
           <ul>{ch.objectives.map((o) => <li key={o.id} className={game.done.includes(o.id) ? 'done' : ''}>{o.text}</li>)}</ul>
         </>
-      ) : <><div className="eyebrow">All Chapters complete</div><h2>Your town thrives</h2><p className="muted">Send Expeditions from the World Map. More Chapters are on the way.</p></>}
+      ) : <><div className="eyebrow">All Chapters complete</div><h2>Your town thrives</h2><p className="muted">You have seen everything for now: more is coming in v3.</p></>}
     </aside>
   )
 }

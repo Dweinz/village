@@ -46,6 +46,7 @@ export interface BuildingDef {
   unique?: boolean
   chapter: number // Chapter index that unlocks it
   jobs: JobDef[]
+  rareUpgrade: Partial<Record<RareMaterial, number>> // what the last upgrade (to MAX_BUILDING_LEVEL) costs in Rare Materials, on top of the usual cost
 }
 
 export const UPGRADE_SCALE = 1.9
@@ -58,47 +59,49 @@ const contract = (id: string, name: string, minLevel: number, duration: number, 
 
 export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   townhall: {
-    name: 'Town Hall', cost: { wood: 40, gold: 40 }, slots: 1, housing: 3, unique: true, chapter: 0,
+    name: 'Town Hall', cost: { wood: 40, gold: 40 }, slots: 1, housing: 3, unique: true, chapter: 0, rareUpgrade: { crystal: 6, silk: 6 },
     jobs: [
       prod('taxes', 'Collect Taxes', 20, { cha: 1 }, { gold: 6 }, 3),
       contract('dispute', 'Settle a Dispute', 2, 90, { cha: 1, int: 1 }, { gold: 80 }, 40),
     ],
   },
   farm: {
-    name: 'Farm', cost: { wood: 20 }, slots: 2, chapter: 0,
+    name: 'Farm', cost: { wood: 20 }, slots: 2, chapter: 0, rareUpgrade: { spice: 4 },
     jobs: [
       prod('fields', 'Tend Fields', 10, { end: 1 }, { food: 4 }, 2),
       contract('festival', 'Harvest Festival', 3, 180, { end: 1, cha: 1 }, { food: 120, gold: 40 }, 60),
     ],
   },
   lumbercamp: {
-    name: 'Lumber Camp', cost: { gold: 20 }, slots: 2, chapter: 0,
+    name: 'Lumber Camp', cost: { gold: 20 }, slots: 2, chapter: 0, rareUpgrade: { silk: 4 },
     jobs: [
       prod('chop', 'Chop Wood', 12, { str: 1 }, { wood: 4 }, 2),
       contract('thicket', 'Clear the Thicket', 3, 150, { str: 1, end: 1 }, { wood: 100 }, 50),
     ],
   },
-  house: { name: 'House', cost: { wood: 30 }, slots: 0, housing: 2, chapter: 0, jobs: [] },
+  house: { name: 'House', cost: { wood: 30 }, slots: 0, housing: 2, chapter: 0, jobs: [], rareUpgrade: { silk: 3 } },
   tavern: {
-    name: 'Tavern', cost: { wood: 50, gold: 50 }, slots: 1, unique: true, chapter: 1,
+    name: 'Tavern', cost: { wood: 50, gold: 50 }, slots: 1, unique: true, chapter: 1, rareUpgrade: { spice: 6 },
     jobs: [
       prod('serve', 'Serve Drinks', 15, { cha: 1, dex: 1 }, { gold: 5 }, 3, { cost: { food: 1 } }),
       contract('feast', 'Host a Feast', 2, 120, { cha: 1 }, { gold: 150 }, 60, { food: 40 }),
+      contract('banquet', 'Spice Banquet', 3, 240, { cha: 2 }, { gold: 450 }, 150, { spice: 4, food: 40 }),
     ],
   },
   quarry: {
-    name: 'Quarry', cost: { wood: 40, gold: 30 }, slots: 2, chapter: 1,
+    name: 'Quarry', cost: { wood: 40, gold: 30 }, slots: 2, chapter: 1, rareUpgrade: { crystal: 4 },
     jobs: [prod('cut', 'Cut Stone', 15, { str: 1, end: 1 }, { stone: 3 }, 3)],
   },
   mine: {
-    name: 'Mine', cost: { wood: 60, stone: 40 }, slots: 2, chapter: 2,
+    name: 'Mine', cost: { wood: 60, stone: 40 }, slots: 2, chapter: 2, rareUpgrade: { crystal: 6 },
     jobs: [prod('dig', 'Dig Ore', 20, { str: 1, per: 1 }, { ore: 2 }, 4)],
   },
   guildhall: {
-    name: 'Guild Hall', cost: { wood: 80, stone: 60, gold: 100 }, slots: 1, unique: true, chapter: 2,
+    name: 'Guild Hall', cost: { wood: 80, stone: 60, gold: 100 }, slots: 1, unique: true, chapter: 2, rareUpgrade: { crystal: 5, spice: 5, silk: 5 },
     jobs: [
       prod('train', 'Train', 30, { int: 1 }, {}, 12),
       contract('archives', 'Study the Archives', 2, 240, { int: 2 }, {}, 100),
+      contract('lore', 'Crystal Lore', 3, 300, { int: 2 }, {}, 300, { crystal: 4 }),
     ],
   },
 }

@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
-import { advance, assign, assignOutpost, build, buildOutpost, foreignCity, newGame, nextReputationTier, openTradeRoute, ruinLevel, sendExpedition, type GameEvent } from './sim/game'
-import { FOREIGN_CITIES, REPUTATION_TIERS, RES_NAME, SITE_KINDS } from './sim/data'
+import { CHAPTERS, advance, assign, assignOutpost, build, buildOutpost, foreignCity, newGame, nextReputationTier, openTradeRoute, ruinLevel, sendExpedition, type GameEvent } from './sim/game'
+import { FOREIGN_CITIES, MAX_BUILDING_LEVEL, REPUTATION_TIERS, RES_NAME, SITE_KINDS } from './sim/data'
 import { SAVE_KEY, toSave } from './sim/save'
 import { costText } from './format'
 
@@ -459,4 +459,26 @@ test('a Reputation Tier reached while the game was closed is in the Report', () 
   render(<App />)
   const report = screen.getByRole('dialog', { name: 'While you were away' })
   expect(within(report).getByText(`🤝 Reputation with ${rates.name} rose to ${REPUTATION_TIERS[1].name}`)).toBeTruthy()
+})
+
+test('the Objectives panel shows the first Chapter after the World Map opens, with its Objectives', () => {
+  const game = mapGame()
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  const panel = screen.getByRole('complementary', { name: 'Objectives' })
+  expect(within(panel).getByRole('heading', { name: 'The Wider World' })).toBeTruthy()
+  expect(within(panel).getByText(`Chapter ${game.chapter + 1}`)).toBeTruthy()
+  expect(within(panel).getAllByRole('listitem').map((li) => li.textContent)).toEqual(CHAPTERS[game.chapter].objectives.map((o) => o.text))
+})
+
+test('once every Chapter is complete, the game says more is coming in v3', () => {
+  const game = mapGame()
+  game.chapter = CHAPTERS.length - 1
+  game.plots[0]!.level = MAX_BUILDING_LEVEL
+  game.worldMap.find((s) => s.kind === 'ruin')!.cleared = true // every Objective of the last Chapter is met
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  passTime(1000)
+  expect(screen.getByText(/All Chapters complete: more is coming in v3/)).toBeTruthy()
+  expect(within(screen.getByRole('complementary', { name: 'Objectives' })).getByText(/coming in v3/)).toBeTruthy()
 })

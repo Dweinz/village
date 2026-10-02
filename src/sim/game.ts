@@ -3,7 +3,7 @@ import {
   ATTRS, BUILDINGS, EXPEDITION_ATTRS, EXPEDITION_BASE_CHANCE, EXPEDITION_CHANCE_PER_DISTANCE, EXPEDITION_CHANCE_PER_POINT,
   EXPEDITION_CHANCE_RANGE, EXPEDITION_FOOD_PER_MEMBER_DISTANCE, EXPEDITION_GOLD_PER_DISTANCE, EXPEDITION_MAX_PARTY,
   EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, INJURY_CHANCE, INJURY_SECONDS, MAX_BUILDING_LEVEL, NAMES, OUTPOST_COST, OUTPOST_JOB, OUTPOST_SLOTS, OUTPOST_YIELD, RES_NAME,
-  FOREIGN_CITIES, REPUTATION_PER_CYCLE, REPUTATION_TIERS, RUIN_BASE_CHANCE, RUIN_INJURY_CHANCE, RUIN_LEVEL_BASE, RUIN_MAX_CHANCE, RUIN_REWARD_PER_DISTANCE, RUIN_XP_PER_DISTANCE, SPECS, SPEC_LEVEL, TRADE_JOB, TRAITS,
+  FOREIGN_CITIES, REPUTATION_PER_CYCLE, REPUTATION_TIERS, RUIN_BASE_CHANCE, RUIN_INJURY_CHANCE, RUIN_LEVEL_BASE, RUIN_MAX_CHANCE, RUIN_REWARD_PER_DISTANCE, RUIN_XP_PER_DISTANCE, RARE_MATERIALS, SITE_REVEAL_DISTANCE, SPECS, isRare, SPEC_LEVEL, TRADE_JOB, TRAITS,
   TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type ForeignCityDef, type JobDef, type Res, type SpecId, type TraitId, type Workplace,
 } from './data'
 import { mulberry32 } from './random'
@@ -122,6 +122,34 @@ export const CHAPTERS: { name: string; objectives: Objective[] }[] = [
       { id: 'ore50', text: 'Stockpile 50 Ore', check: (g) => g.stock.ore >= 50 },
     ],
   },
+  {
+    name: 'The Wider World',
+    objectives: [
+      { id: 'fog', text: 'Reveal a Site hidden in the fog', check: (g) => g.worldMap.some((s) => s.distance > SITE_REVEAL_DISTANCE && s.discovery !== 'hidden') },
+      { id: 'reach', text: 'Reach a Site', check: (g) => g.worldMap.some((s) => s.discovery === 'reached') },
+    ],
+  },
+  {
+    name: 'Riches of the Land',
+    objectives: [
+      { id: 'outpost', text: 'Build an Outpost', check: (g) => g.worldMap.some((s) => s.outpost) },
+      { id: 'rare10', text: 'Stockpile 10 of a Rare Material', check: (g) => RARE_MATERIALS.some((r) => g.stock[r] >= 10) },
+    ],
+  },
+  {
+    name: 'Friends Abroad',
+    objectives: [
+      { id: 'route', text: 'Open a Trade Route', check: (g) => g.villagers.some((v) => v.activity?.kind === 'trade') },
+      { id: 'friend', text: `Become a ${REPUTATION_TIERS[1].name} of a Foreign City`, check: (g) => g.worldMap.some((s) => reputationTier(s.reputation ?? 0) >= 1) },
+    ],
+  },
+  {
+    name: 'Secrets of the Ruins',
+    objectives: [
+      { id: 'ruin', text: 'Clear a Ruin', check: (g) => g.worldMap.some((s) => s.cleared) },
+      { id: 'th5', text: `Upgrade the Town Hall to level ${MAX_BUILDING_LEVEL}`, check: (g) => has(g, 'townhall', MAX_BUILDING_LEVEL) },
+    ],
+  },
 ]
 
 export const WORLD_MAP_CHAPTER = 4 // completing Beyond the Walls opens the World Map
@@ -157,13 +185,16 @@ export const jobsFor = (p: NonNullable<Plot>) => BUILDINGS[p.type].jobs.filter((
 export const findJob = (type: BuildingType, id: string) => BUILDINGS[type].jobs.find((j) => j.id === id)!
 export const xpToNext = (level: number) => Math.round(10 * level ** 1.6)
 export const hireCost = (g: Game) => Math.round(50 * 1.5 ** Math.max(0, g.villagers.length - 3))
-export const buildCost = (type: BuildingType, level: number): Bag =>
-  Object.fromEntries(Object.entries(BUILDINGS[type].cost).map(([r, n]) => [r, Math.round(n * UPGRADE_SCALE ** level)]))
-/** Half of everything paid for a Building (its level-1 cost and every upgrade), rounded down. */
+/** What it costs to raise a Building from `level` (0 = building it) to the next; the last upgrade also costs Rare Materials. */
+export const buildCost = (type: BuildingType, level: number): Bag => ({
+  ...Object.fromEntries(Object.entries(BUILDINGS[type].cost).map(([r, n]) => [r, Math.round(n * UPGRADE_SCALE ** level)])),
+  ...(level + 1 === MAX_BUILDING_LEVEL ? BUILDINGS[type].rareUpgrade : {}),
+})
+/** Half of everything paid for a Building (its level-1 cost and every upgrade), rounded down; Rare Materials are not given back. */
 export function demolishRefund(p: NonNullable<Plot>): Bag {
   const refund: Bag = {}
   for (let level = 0; level < p.level; level++) {
-    for (const [r, n] of Object.entries(buildCost(p.type, level))) refund[r as Res] = (refund[r as Res] ?? 0) + n
+    for (const [r, n] of Object.entries(buildCost(p.type, level))) if (!isRare(r as Res)) refund[r as Res] = (refund[r as Res] ?? 0) + n
   }
   return Object.fromEntries(Object.entries(refund).map(([r, n]) => [r, Math.floor(n / 2)]))
 }
