@@ -3,6 +3,8 @@ import type { Game } from './game'
 
 export interface Save { game: Game; savedAt: number }
 
+export const SAVE_KEY = 'hearthhold-save' // where the app keeps the save in localStorage
+
 type Migration = (game: any) => any // old save shapes aren't typed
 
 /** MIGRATIONS[i] turns a version i+1 game into version i+2. Append one whenever the shape of Game changes. */

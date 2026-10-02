@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Scene } from './Scene'
 import {
-  ATTRS, ATTR_NAMES, BUILDINGS, RESOURCES, RES_ICON, SPECS, SPEC_IDS, SPEC_LEVEL, TRAITS,
+  ATTRS, ATTR_NAMES, BUILDINGS, RESOURCES, RES_ICON, RES_NAME, SPECS, SPEC_IDS, SPEC_LEVEL, TRAITS,
   type Bag, type BuildingType, type Res,
 } from './sim/data'
 import {
@@ -9,9 +9,7 @@ import {
   hireCost, housing, jobsFor, maxLevel, newGame, raise, reroll, slots, specialize, unassign, upgrade, workers, xpToNext,
   type Game, type GameEvent, type Villager,
 } from './sim/game'
-import { fromSave, toSave } from './sim/save'
-
-const SAVE_KEY = 'hearthhold-save'
+import { SAVE_KEY, fromSave, toSave } from './sim/save'
 
 interface Report { seconds: number; capped: boolean; before: Game['stock']; after: Game['stock']; events: GameEvent[] }
 
@@ -105,7 +103,7 @@ function TopBar({ game, onReset }: { game: Game; onReset: () => void }) {
   return (
     <header className="panel topbar">
       <strong className="logo">Hearthhold</strong>
-      {RESOURCES.map((r) => <span key={r} className="res" title={r}>{RES_ICON[r]} {fmt(game.stock[r])}</span>)}
+      {RESOURCES.map((r) => <span key={r} className="res" title={RES_NAME[r]} aria-label={`${RES_NAME[r]} ${fmt(game.stock[r])}`}>{RES_ICON[r]} {fmt(game.stock[r])}</span>)}
       <span className="res" title="Villagers / Housing">👥 {game.villagers.length}/{housing(game)}</span>
       {game.starving && <span className="badge warn">Starving</span>}
       <button className="ghost" onClick={onReset} title="New game">↺</button>
@@ -185,7 +183,7 @@ function PlotPanel({ game, plot, act, onClose }: { game: Game; plot: number; act
             </div>
           ))}
           {here.length < slots(p) && idle.length > 0 && (
-            <select value="" onChange={(e) => act((g) => assign(g, Number(e.target.value), plot, j.id))}>
+            <select value="" aria-label={`Assign a Villager to ${j.name}`} onChange={(e) => act((g) => assign(g, Number(e.target.value), plot, j.id))}>
               <option value="">+ Assign a Villager…</option>
               {idle.map((v) => <option key={v.id} value={v.id}>{v.name} (Lv {v.level})</option>)}
             </select>
@@ -268,11 +266,11 @@ function ReportModal({ report, onClose }: { report: Report; onClose: () => void 
   const lines = [...new Set(report.events.map(describe))]
   return (
     <div className="backdrop" onClick={onClose}>
-      <div className="panel modal" onClick={(e) => e.stopPropagation()}>
-        <div className="eyebrow">While you were away</div>
+      <div className="panel modal" role="dialog" aria-modal="true" aria-labelledby="report-title" onClick={(e) => e.stopPropagation()}>
+        <div className="eyebrow" id="report-title">While you were away</div>
         <h2>{dur(report.seconds)}{report.capped && <span className="muted small"> (capped)</span>}</h2>
         <div className="gains">
-          {gained.length ? gained.map(([r, n]) => <div key={r} className={n < 0 ? 'neg' : ''}>{RES_ICON[r]} {n > 0 ? '+' : ''}{fmt(n)}</div>) : <span className="muted">Nothing was produced. Assign Villagers to Jobs!</span>}
+          {gained.length ? gained.map(([r, n]) => <div key={r} className={n < 0 ? 'neg' : ''} aria-label={`${RES_NAME[r]} ${n > 0 ? '+' : ''}${fmt(n)}`}>{RES_ICON[r]} {n > 0 ? '+' : ''}{fmt(n)}</div>) : <span className="muted">Nothing was produced. Assign Villagers to Jobs!</span>}
         </div>
         {lines.length > 0 && <ul className="events">{lines.map((l) => <li key={l}>{l}</li>)}</ul>}
         <button onClick={onClose}>Continue</button>

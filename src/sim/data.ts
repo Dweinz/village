@@ -10,6 +10,7 @@ export const RESOURCES = ['gold', 'wood', 'stone', 'food', 'ore'] as const
 export type Res = (typeof RESOURCES)[number]
 export type Bag = Partial<Record<Res, number>>
 export const RES_ICON: Record<Res, string> = { gold: '🪙', wood: '🪵', stone: '🪨', food: '🌾', ore: '⛏️' }
+export const RES_NAME: Record<Res, string> = { gold: 'Gold', wood: 'Wood', stone: 'Stone', food: 'Food', ore: 'Ore' }
 
 export type BuildingType = 'townhall' | 'farm' | 'lumbercamp' | 'house' | 'tavern' | 'quarry' | 'mine' | 'guildhall'
 
