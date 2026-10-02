@@ -2,7 +2,8 @@
 import {
   ATTRS, BUILDINGS, EXPEDITION_ATTRS, EXPEDITION_BASE_CHANCE, EXPEDITION_CHANCE_PER_DISTANCE, EXPEDITION_CHANCE_PER_POINT,
   EXPEDITION_CHANCE_RANGE, EXPEDITION_FOOD_PER_MEMBER_DISTANCE, EXPEDITION_GOLD_PER_DISTANCE, EXPEDITION_MAX_PARTY,
-  EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, INJURY_CHANCE, INJURY_SECONDS, MAX_BUILDING_LEVEL, NAMES, OUTPOST_COST, OUTPOST_JOB, OUTPOST_SLOTS, OUTPOST_YIELD, RES_NAME, SPECS, SPEC_LEVEL, TRAITS,
+  EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, INJURY_CHANCE, INJURY_SECONDS, MAX_BUILDING_LEVEL, NAMES, OUTPOST_COST, OUTPOST_JOB, OUTPOST_SLOTS, OUTPOST_YIELD, RES_NAME,
+  FOREIGN_CITIES, RUIN_BASE_CHANCE, RUIN_INJURY_CHANCE, RUIN_LEVEL_BASE, RUIN_MAX_CHANCE, RUIN_REWARD_PER_DISTANCE, RUIN_XP_PER_DISTANCE, SPECS, SPEC_LEVEL, TRADE_JOB, TRAITS,
   TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type JobDef, type Res, type SpecId, type TraitId, type Workplace,
 } from './data'
 import { mulberry32 } from './random'
@@ -20,15 +21,16 @@ export interface Villager {
   activity?: Activity // undefined = idle
 }
 
-// The one thing a Villager is doing. Trade Routes become a further kind (v2).
+// The one thing a Villager is doing.
 export type Activity =
   | { kind: 'job'; plot: number; job: string; progress: number }
   | { kind: 'outpost'; site: number; progress: number }
+  | { kind: 'trade'; site: number; give: Res; get: Res; progress: number } // a Trade Route with a Foreign City
   | { kind: 'expedition'; expedition: number }
   | { kind: 'injured'; recoversAt: number } // game time
 
-// Reach a revealed Site, or explore: reveal the nearest hidden one.
-export type ExpeditionTarget = { kind: 'reach'; site: number } | { kind: 'explore' }
+// Reach a revealed Site, explore: reveal the nearest hidden one, or raid a reached Ruin.
+export type ExpeditionTarget = { kind: 'reach'; site: number } | { kind: 'explore' } | { kind: 'ruin'; site: number }
 
 export interface ExpeditionPlan { site: Site; duration: number; cost: Bag; chance: number }
 
@@ -69,6 +71,8 @@ export type GameEvent =
   | { kind: 'expeditionSucceeded'; party: string[]; goal: Expedition['goal']; site: Site['kind'] }
   | { kind: 'expeditionFailed'; party: string[] }
   | { kind: 'siteRevealed'; party: string[]; id: number; site: Site['kind']; distance: number }
+  | { kind: 'ruinCleared'; party: string[]; reward: Bag }
+  | { kind: 'traded'; name: string; city: string; gave: Bag; got: Bag } // one Trade Route cycle
   | { kind: 'injured'; name: string }
   | { kind: 'recovered'; name: string }
 
@@ -172,7 +176,10 @@ const mult = (v: Villager, type: Workplace, key: 'xp' | 'gold') =>
 
 export function speed(g: Game, v: Villager, type: Workplace, job: JobDef) {
   let s = 1 + 0.04 * Object.entries(job.attrs).reduce((n, [a, w]) => n + v.attrs[a as Attr] * w, 0)
-  for (const b of bonuses(v)) if (applies(b, type)) s *= 1 + (b.speed ?? 0)
+  for (const b of bonuses(v)) {
+    if (applies(b, type)) s *= 1 + (b.speed ?? 0)
+    if (type === 'trade') s *= 1 + (b.trade ?? 0)
+  }
   return g.starving ? s / 2 : s
 }
 
@@ -191,6 +198,7 @@ const xpMult = (v: Villager) => bonuses(v).reduce((m, b) => (b.workplaces ? m : 
 export function activityName(g: Game, v: Villager) {
   if (v.activity?.kind === 'expedition') return 'Away on an Expedition'
   if (v.activity?.kind === 'injured') return 'Injured'
+  if (v.activity?.kind === 'trade') return `Trade Route to ${foreignCity(g, v.activity.site).name}`
   if (v.activity?.kind === 'outpost') return `Work the ${RES_NAME[siteById(g, v.activity.site).material!]} Deposit`
   return jobOf(g, v)?.name ?? 'Idle'
 }
@@ -289,6 +297,22 @@ function step(g: Game, s: number, ev: GameEvent[]) {
   }
 
   for (const v of g.villagers) {
+    const route = v.activity
+    if (route?.kind !== 'trade') continue
+    route.progress = Math.min(TRADE_JOB.duration, route.progress + s * speed(g, v, 'trade', TRADE_JOB))
+    if (route.progress < TRADE_JOB.duration) continue
+    if (tradeStalled(g, v)) continue // stalls until it can pay
+    const city = foreignCity(g, route.site)
+    const gave = { [route.give]: city.buys[route.give]! }
+    const got = { [route.get]: city.sells[route.get]! }
+    pay(g, gave)
+    g.stock[route.get] += got[route.get]!
+    route.progress = 0
+    addXp(v, TRADE_JOB.xp * mult(v, 'trade', 'xp'), ev)
+    ev.push({ kind: 'traded', name: v.name, city: city.name, gave, got })
+  }
+
+  for (const v of g.villagers) {
     if (v.activity?.kind !== 'injured' || g.time < v.activity.recoversAt) continue
     v.activity = undefined
     ev.push({ kind: 'recovered', name: v.name })
@@ -302,18 +326,24 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     const site = siteById(g, x.site)
     endExpedition(g, x)
     if (rand(g) < x.chance) {
-      if (x.goal === 'reach') {
+      if (x.goal === 'ruin') {
+        site.cleared = true
+        const reward = ruinReward(site)
+        for (const [r, n] of Object.entries(reward)) g.stock[r as Res] += n
+        ev.push({ kind: 'ruinCleared', party: names, reward })
+      } else if (x.goal === 'reach') {
         site.discovery = 'reached'
         ev.push({ kind: 'expeditionSucceeded', party: names, goal: x.goal, site: site.kind })
       } else {
         site.discovery = 'revealed'
         ev.push({ kind: 'siteRevealed', party: names, id: site.id, site: site.kind, distance: site.distance })
       }
-      for (const v of party) addXp(v, EXPEDITION_XP_PER_DISTANCE * site.distance * xpMult(v), ev)
+      const xp = x.goal === 'ruin' ? ruinXp(site) : EXPEDITION_XP_PER_DISTANCE * site.distance
+      for (const v of party) addXp(v, xp * xpMult(v), ev)
     } else {
       ev.push({ kind: 'expeditionFailed', party: names })
       for (const v of party) {
-        if (rand(g) >= INJURY_CHANCE) continue
+        if (rand(g) >= (x.goal === 'ruin' ? RUIN_INJURY_CHANCE : INJURY_CHANCE)) continue
         v.activity = { kind: 'injured', recoversAt: g.time + INJURY_SECONDS }
         ev.push({ kind: 'injured', name: v.name })
       }
@@ -361,22 +391,43 @@ const nextToExplore = (g: Game) => g.worldMap
   .filter((s) => s.discovery === 'hidden' && !g.expeditions.some((x) => x.goal === 'explore' && x.site === s.id))
   .sort((a, b) => a.distance - b.distance || a.id - b.id)[0]
 
+/** The level every member of a Party must have to raid this Ruin. */
+export const ruinLevel = (site: Site) => RUIN_LEVEL_BASE + site.distance
+/** The XP each Party member earns for clearing this Ruin, before their own XP bonuses. */
+export const ruinXp = (site: Site) => RUIN_XP_PER_DISTANCE * site.distance
+/** What clearing this Ruin pays into the Stockpile. */
+export const ruinReward = (site: Site): Bag =>
+  Object.fromEntries(Object.entries(RUIN_REWARD_PER_DISTANCE).map(([r, n]) => [r, n * site.distance]))
+
 /** What an Expedition would take and risk. Throws a player-facing Error if the party or target is invalid. */
 export function planExpedition(g: Game, party: number[], target: ExpeditionTarget): ExpeditionPlan {
   if (party.length === 0) throw new Error('Choose at least one Villager')
   if (party.length > EXPEDITION_MAX_PARTY || new Set(party).size < party.length) throw new Error(`A party is at most ${EXPEDITION_MAX_PARTY} Villagers`)
-  const site = target.kind === 'reach' ? g.worldMap.find((s) => s.id === target.site) : nextToExplore(g)
-  if (!site) throw new Error(target.kind === 'reach' ? 'No such Site' : 'Nothing left to explore')
-  if (site.discovery === 'hidden' && target.kind === 'reach') throw new Error('That Site is still hidden in the fog')
-  if (site.discovery === 'reached' && target.kind === 'reach') throw new Error('Already reached')
-  if (target.kind === 'reach' && g.expeditions.some((x) => x.goal === 'reach' && x.site === site.id)) throw new Error('An Expedition is already on its way there')
+  const site = target.kind === 'explore' ? nextToExplore(g) : g.worldMap.find((s) => s.id === target.site)
+  if (!site) throw new Error(target.kind === 'explore' ? 'Nothing left to explore' : 'No such Site')
+  if (target.kind === 'reach') {
+    if (site.discovery === 'hidden') throw new Error('That Site is still hidden in the fog')
+    if (site.discovery === 'reached') throw new Error('Already reached')
+    if (g.expeditions.some((x) => x.goal === 'reach' && x.site === site.id)) throw new Error('An Expedition is already on its way there')
+  }
+  if (target.kind === 'ruin') {
+    if (site.kind !== 'ruin') throw new Error('That Site is not a Ruin')
+    if (site.discovery !== 'reached') throw new Error('Reach this Ruin first')
+    if (site.cleared) throw new Error('This Ruin has already been cleared')
+    if (g.expeditions.some((x) => x.goal === 'ruin' && x.site === site.id)) throw new Error('A Party is already inside this Ruin')
+  }
   if (party.some((id) => !g.villagers.some((v) => v.id === id))) throw new Error('No such Villager')
   const members = party.map((id) => villager(g, id))
   for (const v of members) rejectIfCommitted(g, v) // a Villager on a Production Job leaves it to go
+  if (target.kind === 'ruin' && members.some((v) => v.level < ruinLevel(site))) {
+    throw new Error(`Every member of the Party must be level ${ruinLevel(site)} or higher`)
+  }
   const points = members.reduce((n, v) => n + EXPEDITION_ATTRS.reduce((m, a) => m + v.attrs[a], 0), 0)
-  const [lo, hi] = EXPEDITION_CHANCE_RANGE
+  const [lo, max] = EXPEDITION_CHANCE_RANGE
+  const hi = target.kind === 'ruin' ? RUIN_MAX_CHANCE : max
   const bonus = members.reduce((n, v) => n + bonuses(v).reduce((m, b) => m + (b.expedition ?? 0), 0), 0)
-  const raw = EXPEDITION_BASE_CHANCE - EXPEDITION_CHANCE_PER_DISTANCE * site.distance + EXPEDITION_CHANCE_PER_POINT * points + bonus
+  const base = target.kind === 'ruin' ? RUIN_BASE_CHANCE : EXPEDITION_BASE_CHANCE
+  const raw = base - EXPEDITION_CHANCE_PER_DISTANCE * site.distance + EXPEDITION_CHANCE_PER_POINT * points + bonus
   return {
     site,
     duration: EXPEDITION_SECONDS_PER_DISTANCE * site.distance,
@@ -438,6 +489,40 @@ export const assignOutpost = action((g, villagerId: number, siteId: number) => {
   const staff = outpostWorkers(g, siteId)
   if (!staff.includes(v) && staff.length >= outpostSlots(site)) throw new Error('No free slots')
   v.activity = { kind: 'outpost', site: siteId, progress: 0 }
+})
+
+/** The rates a Foreign City trades at. Its place among the map's cities picks its entry in FOREIGN_CITIES. */
+export function foreignCity(g: Game, siteId: number) {
+  const cities = g.worldMap.filter((s) => s.kind === 'city')
+  return FOREIGN_CITIES[cities.findIndex((s) => s.id === siteId)]
+}
+/** True while a Trade Route waits at the end of its cycle for the Stockpile to cover its load. */
+export function tradeStalled(g: Game, v: Villager) {
+  const route = v.activity
+  return route?.kind === 'trade' && !canAfford(g, { [route.give]: foreignCity(g, route.site).buys[route.give] })
+}
+/** Villagers who could be sent to work a Trade Route now (one on a Production Job leaves it to go). */
+export const canTrade = (g: Game, v: Villager) => !busyReason(g, v) && v.activity?.kind !== 'trade'
+
+export const openTradeRoute = action((g, villagerId: number, siteId: number, give: Res, get: Res) => {
+  const v = villager(g, villagerId)
+  const site = findSite(g, siteId)
+  if (site.kind !== 'city') throw new Error('Only a Foreign City can be traded with')
+  if (site.discovery !== 'reached') throw new Error('Reach this Foreign City first')
+  const city = foreignCity(g, siteId)
+  if (give === get) throw new Error('Choose two different goods')
+  if (!city.buys[give]) throw new Error(`${city.name} doesn't buy ${RES_NAME[give]}`)
+  if (!city.sells[get]) throw new Error(`${city.name} doesn't sell ${RES_NAME[get]}`)
+  rejectIfCommitted(g, v)
+  v.activity = { kind: 'trade', site: siteId, give, get, progress: 0 }
+})
+
+export const tradeRoutes = (g: Game, site: number) => g.villagers.filter((v) => v.activity?.kind === 'trade' && v.activity.site === site)
+
+export const closeTradeRoute = action((g, villagerId: number) => {
+  const v = villager(g, villagerId)
+  if (v.activity?.kind !== 'trade') throw new Error(`${v.name} has no Trade Route`)
+  v.activity = undefined
 })
 
 export const build = action((g, plot: number, type: BuildingType) => {

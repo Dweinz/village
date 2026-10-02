@@ -1,10 +1,14 @@
 // The World Map view: a 2D chart of the Sites around the Settlement. Only reads state and dispatches (ADR 0001).
 import { useState } from 'react'
 import { activityText, costText, dur, type Act } from './format'
-import { EXPEDITION_ATTRS, EXPEDITION_MAX_PARTY, RES_ICON, RES_NAME, SITE_KINDS, SITE_MAX_DISTANCE, SITE_REVEAL_DISTANCE, SPECS, type Res } from './sim/data'
 import {
-  assignOutpost, buildOutpost, canAfford, canJoinExpedition, outpostCost, outpostMaxLevel, outpostSlots, outpostWorkers, planExpedition,
-  recallExpedition, sendExpedition, siteById, unassign, upgradeOutpost, type ExpeditionTarget, type Game,
+  EXPEDITION_ATTRS, EXPEDITION_MAX_PARTY, RES_ICON, RES_NAME, RUIN_INJURY_CHANCE, SITE_KINDS, SITE_MAX_DISTANCE, SITE_REVEAL_DISTANCE, SPECS,
+  type Res,
+} from './sim/data'
+import {
+  assignOutpost, buildOutpost, canAfford, canJoinExpedition, canTrade, closeTradeRoute, foreignCity, openTradeRoute, outpostCost, outpostMaxLevel, outpostSlots,
+  outpostWorkers, planExpedition, recallExpedition, ruinLevel, ruinReward, ruinXp, sendExpedition, siteById, tradeRoutes, tradeStalled, unassign, upgradeOutpost,
+  type ExpeditionTarget, type Game,
 } from './sim/game'
 import type { Site } from './sim/world'
 
@@ -44,7 +48,7 @@ export function WorldMap({ game, selected, onSelect, onExplore, act }: {
             key={s.id}
             className={`site ${selected === s.id ? 'selected' : ''}`}
             style={at(s)}
-            aria-label={`${SITE_KINDS[s.kind].name}, distance ${s.distance}${s.outpost ? `, Outpost level ${s.outpost.level}` : ''}`}
+            aria-label={`${SITE_KINDS[s.kind].name}, distance ${s.distance}${s.outpost ? `, Outpost level ${s.outpost.level}` : ''}${s.cleared ? ', cleared' : ''}`}
             aria-pressed={selected === s.id}
             onClick={() => onSelect(s.id)}
           >
@@ -63,7 +67,7 @@ export function WorldMap({ game, selected, onSelect, onExplore, act }: {
             return (
               <li key={x.id}>
                 <div className="row small">
-                  <span>{names(x.party)} → {x.goal === 'explore' ? 'into the fog' : SITE_KINDS[s.kind].name} · {dur(x.duration - x.progress)} left</span>
+                  <span>{names(x.party)} → {x.goal === 'explore' ? 'into the fog' : x.goal === 'ruin' ? 'into the Ruin' : SITE_KINDS[s.kind].name} · {dur(x.duration - x.progress)} left</span>
                   <button className="ghost small" aria-label={`Recall ${names(x.party)}`} onClick={() => act((g) => recallExpedition(g, x.id))}>Recall</button>
                 </div>
                 <div className="bar"><i style={{ width: `${(x.progress / x.duration) * 100}%` }} /></div>
@@ -82,13 +86,77 @@ export function SitePanel({ game, site, act, onClose }: { game: Game; site: Site
     <aside className="panel side" aria-label={kind.name}>
       <div className="head"><h2>{kind.icon} {kind.name}</h2><button className="ghost" onClick={onClose} aria-label="Close">✕</button></div>
       <div className="card">
-        <div className="row"><strong>Distance {site.distance}</strong><span className="badge">{site.discovery === 'reached' ? 'Reached' : 'Revealed'}</span></div>
+        <div className="row">
+          <strong>Distance {site.distance}</strong>
+          <span className="badge">{site.cleared ? 'Cleared' : site.discovery === 'reached' ? 'Reached' : 'Revealed'}</span>
+        </div>
+        {site.kind === 'city' && site.discovery === 'reached' && <strong>{foreignCity(game, site.id).name}</strong>}
         <p className="muted small">{kind.desc}</p>
         {site.material && <p className="small">Yields {RES_ICON[site.material]} {RES_NAME[site.material]}</p>}
       </div>
       {site.kind === 'deposit' && site.discovery === 'reached' && <OutpostCard game={game} site={site} act={act} />}
+      {site.kind === 'ruin' && <RuinCard site={site} />}
+      {site.kind === 'city' && site.discovery === 'reached' && <TradeCard key={site.id} game={game} site={site} act={act} />}
       {site.discovery === 'revealed' && <PartyPicker key={site.id} game={game} target={{ kind: 'reach', site: site.id }} act={act} />}
+      {site.kind === 'ruin' && site.discovery === 'reached' && !site.cleared && (
+        <PartyPicker key={`ruin-${site.id}`} game={game} target={{ kind: 'ruin', site: site.id }} act={act} />
+      )}
     </aside>
+  )
+}
+
+function RuinCard({ site }: { site: Site }) {
+  if (site.cleared) return <p className="card muted small">This Ruin has been cleared. Nothing is left inside.</p>
+  return (
+    <div className="card small">
+      <div className="row"><strong>Every Party member level {ruinLevel(site)}+</strong><span className="badge warn">High risk</span></div>
+      <p className="muted">Worse odds than a normal Expedition; on failure each member has a {Math.round(RUIN_INJURY_CHANCE * 100)}% Injury chance. You can try again.</p>
+      <p>Reward: {costText(ruinReward(site))} · {ruinXp(site)} XP each</p>
+    </div>
+  )
+}
+
+function TradeCard({ game, site, act }: { game: Game; site: Site; act: Act }) {
+  const city = foreignCity(game, site.id)
+  const [trader, setTrader] = useState('')
+  const [give, setGive] = useState('')
+  const [get, setGet] = useState('')
+  const goods = (bag: typeof city.buys) => Object.keys(bag) as Res[]
+  return (
+    <div className="card">
+      <div className="eyebrow">Rates · per load</div>
+      <p className="small">Buys {costText(city.buys)}</p>
+      <p className="small">Sells {costText(city.sells)}</p>
+      {tradeRoutes(game, site.id).map((v) => v.activity?.kind === 'trade' && (
+        <div key={v.id} className="row small">
+          <span>
+            {v.name}: {RES_ICON[v.activity.give]} {city.buys[v.activity.give]} → {RES_ICON[v.activity.get]} {city.sells[v.activity.get]}
+            {tradeStalled(game, v) && <span className="muted"> · waiting for {RES_NAME[v.activity.give]}</span>}
+          </span>
+          <button className="ghost small" aria-label={`Close ${v.name}'s Trade Route`} onClick={() => act((g) => closeTradeRoute(g, v.id))}>Close</button>
+        </div>
+      ))}
+      <div className="eyebrow">New Trade Route</div>
+      <select value={trader} aria-label="Trader" onChange={(e) => setTrader(e.target.value)}>
+        <option value="">Villager…</option>
+        {game.villagers.filter((v) => canTrade(game, v)).map((v) => <option key={v.id} value={v.id}>{v.name} (Lv {v.level}, CHA {v.attrs.cha})</option>)}
+      </select>
+      <select value={give} aria-label="Send" onChange={(e) => setGive(e.target.value)}>
+        <option value="">Send…</option>
+        {goods(city.buys).map((r) => <option key={r} value={r}>{RES_ICON[r]} {city.buys[r]} {RES_NAME[r]}</option>)}
+      </select>
+      <select value={get} aria-label="Receive" onChange={(e) => setGet(e.target.value)}>
+        <option value="">Receive…</option>
+        {goods(city.sells).map((r) => <option key={r} value={r}>{RES_ICON[r]} {city.sells[r]} {RES_NAME[r]}</option>)}
+      </select>
+      <button
+        className="wide"
+        disabled={!trader || !give || !get}
+        onClick={() => { act((g) => openTradeRoute(g, Number(trader), site.id, give as Res, get as Res)); setTrader('') }}
+      >
+        Open Trade Route
+      </button>
+    </div>
   )
 }
 

@@ -12,6 +12,7 @@ export interface Site {
   discovery: Discovery
   material?: RareMaterial // what a Resource Deposit yields
   outpost?: { level: number } // built on a reached Resource Deposit
+  cleared?: boolean // a Ruin whose Expedition has succeeded
 }
 
 /**

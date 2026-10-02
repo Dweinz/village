@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Scene } from './Scene'
 import { ExplorePanel, SitePanel, WorldMap } from './WorldMap'
-import { activityText, dur, fmt, type Act } from './format'
+import { activityText, costText, dur, fmt, type Act } from './format'
 import {
   ATTRS, ATTR_NAMES, BUILDINGS, RESOURCES, RES_ICON, RES_NAME, SITE_KINDS, SPECS, isRare, SPEC_IDS, SPEC_LEVEL, TRAITS,
   type Bag, type BuildingType, type Res,
@@ -47,6 +47,8 @@ function describe(e: GameEvent) {
     case 'expeditionFailed': return `🥀 ${e.party.join(', ')} came home empty-handed`
     case 'injured': return `🩹 ${e.name} came back Injured`
     case 'recovered': return `💪 ${e.name} has recovered`
+    case 'ruinCleared': return `🏛️ ${e.party.join(', ')} cleared a Ruin and brought back ${costText(e.reward)}`
+    case 'traded': return `🐪 ${e.name} traded at ${e.city}`
     case 'siteRevealed': return `🌫️ ${e.party.join(', ')} found a ${SITE_KINDS[e.site].name} at distance ${e.distance}`
   }
 }
@@ -78,7 +80,7 @@ export default function App() {
       const events: GameEvent[] = []
       commit(advance(ref.current, Math.min((now - last) / 1000, OFFLINE_CAP), events))
       last = now
-      events.forEach((e) => toast(describe(e)))
+      events.filter((e) => e.kind !== 'traded').forEach((e) => toast(describe(e))) // every Trade Route cycle would be noise
     }, 250)
     const autosave = setInterval(save, 5000)
     window.addEventListener('pagehide', save)
@@ -282,9 +284,20 @@ function Roster({ game, act }: { game: Game; act: Act }) {
   )
 }
 
+/** Everything sent and received on Trade Routes, summed over the cycles, or null if there was no trade. */
+function tradeTotals(events: GameEvent[]) {
+  const gave: Bag = {}
+  const got: Bag = {}
+  const add = (to: Bag, from: Bag) => { for (const [r, n] of Object.entries(from)) to[r as Res] = (to[r as Res] ?? 0) + n }
+  for (const e of events) if (e.kind === 'traded') { add(gave, e.gave); add(got, e.got) }
+  return Object.keys(got).length ? { gave, got } : null
+}
+
 function ReportModal({ report, onClose }: { report: Report; onClose: () => void }) {
   const gained = RESOURCES.map((r) => [r, report.after[r] - report.before[r]] as const).filter(([, n]) => Math.abs(n) >= 1)
-  const lines = [...new Set(report.events.map(describe))]
+  const lines = [...new Set(report.events.filter((e) => e.kind !== 'traded').map(describe))]
+  const trade = tradeTotals(report.events)
+  if (trade) lines.push(`🐪 Trade Routes sent ${costText(trade.gave)}, received ${costText(trade.got)}`)
   return (
     <div className="backdrop" onClick={onClose}>
       <div className="panel modal" role="dialog" aria-modal="true" aria-labelledby="report-title" onClick={(e) => e.stopPropagation()}>

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
-import { advance, assign, assignOutpost, build, buildOutpost, newGame, sendExpedition } from './sim/game'
+import { advance, assign, assignOutpost, build, buildOutpost, foreignCity, newGame, openTradeRoute, ruinLevel, sendExpedition, type GameEvent } from './sim/game'
 import { RES_NAME, SITE_KINDS } from './sim/data'
 import { SAVE_KEY, toSave } from './sim/save'
 
@@ -278,4 +278,136 @@ test('Rare Materials gathered at an Outpost while the game was closed are in the
   render(<App />)
   const report = screen.getByRole('dialog', { name: 'While you were away' })
   expect(amount(RES_NAME[site.material!], within(report))).toMatch(/^\+/)
+})
+
+const ruinGame = () => {
+  const game = mapGame()
+  const ruin = game.worldMap.find((s) => s.kind === 'ruin')!
+  ruin.discovery = 'reached'
+  for (const v of game.villagers) v.level = 20
+  return { game, ruin }
+}
+
+test("a reached Ruin's panel shows its level requirement, risk and reward, and sends a Party in", () => {
+  const { game, ruin } = ruinGame()
+  game.villagers[1].level = 1
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+  fireEvent.click(screen.getByRole('button', { name: `Ruin, distance ${ruin.distance}` }))
+
+  const panel = screen.getByRole('complementary', { name: 'Ruin' })
+  expect(within(panel).getByText(`Every Party member level ${ruinLevel(ruin)}+`)).toBeTruthy()
+  expect(within(panel).getByText(/Injury/)).toBeTruthy()
+  expect(within(panel).getByText(/Reward/).textContent).toMatch(/🪙 \d+ .*🔮/)
+
+  fireEvent.click(within(panel).getByRole('checkbox', { name: new RegExp(`^${game.villagers[1].name}`) }))
+  expect(within(panel).getByText(`Every member of the Party must be level ${ruinLevel(ruin)} or higher`)).toBeTruthy()
+  fireEvent.click(within(panel).getByRole('checkbox', { name: new RegExp(`^${game.villagers[1].name}`) }))
+  fireEvent.click(within(panel).getByRole('checkbox', { name: new RegExp(`^${game.villagers[0].name}`) }))
+  fireEvent.click(within(panel).getByRole('button', { name: 'Send Expedition' }))
+  expect(within(screen.getByRole('list', { name: 'Expeditions' })).getByText(/into the Ruin/)).toBeTruthy()
+})
+
+test('a Ruin cleared while the game was closed is in the Report, and its panel shows it cleared', () => {
+  for (let seed = 1; seed < 200; seed++) {
+    const { game, ruin } = ruinGame()
+    game.seed = seed
+    const sent = sendExpedition(game, [1, 2, 3], { kind: 'ruin', site: ruin.id })
+    const ev: GameEvent[] = []
+    advance(sent, sent.expeditions[0].duration, ev)
+    if (!ev.some((e) => e.kind === 'ruinCleared')) continue // this seed's Party failed
+    localStorage.setItem(SAVE_KEY, toSave(sent, Date.now() - (sent.expeditions[0].duration + 5) * 1000))
+    render(<App />)
+    const report = screen.getByRole('dialog', { name: 'While you were away' })
+    expect(within(report).getByText(/cleared a Ruin/)).toBeTruthy()
+    fireEvent.click(within(report).getByRole('button', { name: 'Continue' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+    fireEvent.click(screen.getByRole('button', { name: `Ruin, distance ${ruin.distance}, cleared` }))
+    const panel = screen.getByRole('complementary', { name: 'Ruin' })
+    expect(within(panel).getByText('Cleared')).toBeTruthy()
+    expect(within(panel).queryByRole('button', { name: 'Send Expedition' })).toBeNull()
+    return
+  }
+  throw new Error('no seed cleared the Ruin')
+})
+
+const cityGame = () => {
+  const game = mapGame()
+  const city = game.worldMap.find((s) => s.kind === 'city')!
+  city.discovery = 'reached'
+  return { game, city, rates: foreignCity(game, city.id) }
+}
+
+test("a Foreign City's rates show only once it is reached", () => {
+  const { game, city, rates } = cityGame()
+  city.discovery = 'revealed'
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+  fireEvent.click(screen.getByRole('button', { name: `Foreign City, distance ${city.distance}` }))
+  const panel = screen.getByRole('complementary', { name: 'Foreign City' })
+  expect(within(panel).queryByText(rates.name)).toBeNull()
+  expect(within(panel).queryByText(/Buys/)).toBeNull()
+})
+
+test('opening a Trade Route with a reached Foreign City swaps goods each cycle until it is closed', () => {
+  const { game, city, rates } = cityGame()
+  const [ada] = game.villagers
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+  fireEvent.click(screen.getByRole('button', { name: `Foreign City, distance ${city.distance}` }))
+  const panel = screen.getByRole('complementary', { name: 'Foreign City' })
+  expect(within(panel).getByText(rates.name)).toBeTruthy()
+  expect(within(panel).getByText(/Buys/).textContent).toContain(`🪵 ${rates.buys.wood}`)
+  expect(within(panel).getByText(/Sells/).textContent).toContain(`🔮 ${rates.sells.crystal}`)
+
+  fireEvent.change(within(panel).getByRole('combobox', { name: 'Trader' }), { target: { value: String(ada.id) } })
+  fireEvent.change(within(panel).getByRole('combobox', { name: 'Send' }), { target: { value: 'wood' } })
+  fireEvent.change(within(panel).getByRole('combobox', { name: 'Receive' }), { target: { value: 'crystal' } })
+  fireEvent.click(within(panel).getByRole('button', { name: 'Open Trade Route' }))
+  expect(screen.getByRole('contentinfo').textContent).toContain(`Trade Route to ${rates.name}`)
+
+  passTime(120_000)
+  expect(Number(amount('Crystal'))).toBeGreaterThan(0)
+  expect(Number(amount('Wood'))).toBeLessThan(500)
+
+  fireEvent.click(within(panel).getByRole('button', { name: `Close ${ada.name}'s Trade Route` }))
+  expect(screen.getByRole('contentinfo').textContent).not.toContain('Trade Route')
+  const crystal = amount('Crystal')
+  passTime(120_000)
+  expect(amount('Crystal')).toBe(crystal)
+})
+
+test('a Trade Route that cannot pay stalls and says so, and Villagers who are away are not offered as traders', () => {
+  const { game, city } = cityGame()
+  const [ada, bo] = game.villagers
+  game.stock.wood = 0
+  const away = sendExpedition(game, [bo.id], { kind: 'explore' })
+  localStorage.setItem(SAVE_KEY, toSave(openTradeRoute(away, ada.id, city.id, 'wood', 'crystal'), Date.now()))
+  render(<App />)
+  passTime(120_000)
+  expect(amount('Crystal')).toBe('0')
+  expect(amount('Wood')).toBe('0')
+
+  fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+  fireEvent.click(screen.getByRole('button', { name: `Foreign City, distance ${city.distance}` }))
+  const panel = screen.getByRole('complementary', { name: 'Foreign City' })
+  expect(within(panel).getByText(/waiting for Wood/)).toBeTruthy()
+  const traders = within(within(panel).getByRole('combobox', { name: 'Trader' })).getAllByRole('option').map((o) => o.textContent)
+  expect(traders.some((t) => t!.startsWith(bo.name))).toBe(false) // away on an Expedition
+  expect(traders.some((t) => t!.startsWith(ada.name))).toBe(false) // already trading
+})
+
+test('goods traded while the game was closed are totalled in the Report', () => {
+  const { game, city, rates } = cityGame()
+  const [ada] = game.villagers
+  localStorage.setItem(SAVE_KEY, toSave(openTradeRoute(game, ada.id, city.id, 'wood', 'crystal'), Date.now() - 600_000))
+  render(<App />)
+  const report = screen.getByRole('dialog', { name: 'While you were away' })
+  const line = within(report).getByText(/Trade Routes sent/)
+  expect(line.textContent).toMatch(/sent 🪵 \d+, received 🔮 \d+/)
+  expect(within(report).queryByText(new RegExp(`traded at ${rates.name}`))).toBeNull() // totalled, not one line per cycle
 })

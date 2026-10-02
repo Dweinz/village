@@ -19,11 +19,12 @@ export const RES_NAME: Record<Res, string> = {
 
 export type BuildingType = 'townhall' | 'farm' | 'lumbercamp' | 'house' | 'tavern' | 'quarry' | 'mine' | 'guildhall'
 
-// Where a Villager can work a Production Job: a Building, or an Outpost on a Resource Deposit.
-export type Workplace = BuildingType | 'outpost'
+// Where a Villager can work something that repeats each cycle: a Building, an Outpost on a Resource Deposit, or a Trade Route.
+export type Workplace = BuildingType | 'outpost' | 'trade'
 
 // Shared shape for Trait and Specialization effects. No `workplaces` = applies everywhere.
-export interface Bonus { workplaces?: Workplace[]; speed?: number; xp?: number; gold?: number; expedition?: number } // expedition: added success chance
+// expedition: added success chance; trade: added speed on Trade Routes only.
+export interface Bonus { workplaces?: Workplace[]; speed?: number; xp?: number; gold?: number; expedition?: number; trade?: number }
 
 export interface JobDef {
   id: string
@@ -121,7 +122,7 @@ export const SPECS: Record<SpecId, Bonus & { name: string; desc: string; req: Pa
   forester: { name: 'Forester', desc: '+100% speed at Lumber Camps', req: { str: 8 }, trait: 'lumberjack', workplaces: ['lumbercamp'], speed: 1 },
   mason: { name: 'Mason', desc: '+100% speed at Quarries', req: { str: 8, end: 6 }, trait: 'stonehand', workplaces: ['quarry'], speed: 1 },
   prospector: { name: 'Prospector', desc: '+100% speed at Mines and Outposts, +10% Expedition success', req: { per: 8 }, workplaces: ['mine', 'outpost'], speed: 1, expedition: 0.1 },
-  merchant: { name: 'Merchant', desc: '+50% Gold from all Jobs', req: { cha: 8 }, trait: 'silver_tongue', gold: 0.5 },
+  merchant: { name: 'Merchant', desc: '+50% Gold from all Jobs, +100% speed on Trade Routes', req: { cha: 8 }, trait: 'silver_tongue', gold: 0.5, trade: 1 },
   scholar: { name: 'Scholar', desc: '+100% XP', req: { int: 8 }, trait: 'quick_learner', xp: 1 },
 }
 export const SPEC_IDS = Object.keys(SPECS) as SpecId[]
@@ -152,11 +153,29 @@ export const EXPEDITION_CHANCE_RANGE: [min: number, max: number] = [0.05, 0.95]
 export const INJURY_CHANCE = 0.4 // per Party member, when an Expedition fails
 export const INJURY_SECONDS = 600 // how long an Injured Villager takes to recover
 
+// Ruins: one high-risk, high-reward Expedition into a reached Ruin. Duration and cost as for any Expedition.
+export const RUIN_LEVEL_BASE = 5 // every Party member must be at least this level, plus the Ruin's distance
+export const RUIN_BASE_CHANCE = 0.6 // replaces EXPEDITION_BASE_CHANCE
+export const RUIN_MAX_CHANCE = 0.75 // replaces the top of EXPEDITION_CHANCE_RANGE, so even a strong Party takes a risk
+export const RUIN_INJURY_CHANCE = 0.75 // replaces INJURY_CHANCE
+export const RUIN_REWARD_PER_DISTANCE: Bag = { gold: 150, crystal: 3, spice: 3, silk: 3 }
+export const RUIN_XP_PER_DISTANCE = 50 // per Party member, on success
+
 // Outposts: built on a reached Resource Deposit, worked like a Production Job for its Rare Material.
 export const OUTPOST_COST: Bag = { wood: 60, stone: 30, gold: 40 } // level 1; each upgrade multiplies by UPGRADE_SCALE^level
 export const OUTPOST_SLOTS = 1 // per level
 export const OUTPOST_YIELD = 1 // of the deposit's Rare Material, per cycle and per Outpost level
 export const OUTPOST_JOB: JobDef = { id: 'deposit', name: 'Work the Deposit', kind: 'production', minLevel: 1, duration: 40, attrs: { str: 1, per: 1 }, yields: {}, xp: 5 }
+
+// Foreign Cities: each reached city trades at its own rates. In each cycle a Trade Route sends one load of a good
+// the city buys and receives one load of a good it sells. The Nth Foreign City on the map (by id) gets the Nth entry.
+export interface ForeignCityDef { name: string; buys: Bag; sells: Bag } // amounts per load
+export const FOREIGN_CITIES: ForeignCityDef[] = [
+  { name: 'Varenhold', buys: { wood: 30, food: 40, gold: 25 }, sells: { crystal: 1, stone: 15, silk: 1 } },
+  { name: 'Saltmere', buys: { food: 30, ore: 6, gold: 20 }, sells: { spice: 2, wood: 20, gold: 12 } },
+  { name: 'Ashkar', buys: { stone: 20, crystal: 1, gold: 30 }, sells: { silk: 2, ore: 8, spice: 1 } },
+]
+export const TRADE_JOB: JobDef = { id: 'trade', name: 'Trade Route', kind: 'production', minLevel: 1, duration: 30, attrs: { cha: 1 }, yields: {}, xp: 3 }
 
 export const NAMES = [
   'Ada', 'Bram', 'Cora', 'Dag', 'Edda', 'Finn', 'Greta', 'Hal', 'Ivy', 'Jory', 'Kaja', 'Leif', 'Mira', 'Nils',
