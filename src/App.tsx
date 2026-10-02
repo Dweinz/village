@@ -5,7 +5,7 @@ import {
   type Bag, type BuildingType, type Res,
 } from './sim/data'
 import {
-  CHAPTERS, OFFLINE_CAP, REROLL_COST, advance, assign, build, buildCost, canAfford, canSpecialize, currentJob, jobOf, hire,
+  CHAPTERS, OFFLINE_CAP, REROLL_COST, advance, assign, build, buildCost, canAfford, canSpecialize, currentJob, demolish, demolishRefund, jobOf, plotHousing, hire,
   hireCost, housing, jobsFor, maxLevel, newGame, raise, reroll, slots, specialize, unassign, upgrade, workers, xpToNext,
   type Game, type GameEvent, type Villager,
 } from './sim/game'
@@ -162,7 +162,13 @@ function PlotPanel({ game, plot, act, onClose }: { game: Game; plot: number; act
         </div>
         <button disabled={atMax || !canAfford(game, buildCost(p.type, p.level))} onClick={() => act((g) => upgrade(g, plot))}>Upgrade</button>
       </div>
-      {def.housing && <p className="muted small">Houses {def.housing * p.level} Villagers.</p>}
+      {p.type !== 'townhall' && (
+        <div className="card row">
+          <div className="small">Demolish and get back <Cost bag={demolishRefund(p)} /></div>
+          <button className="ghost" onClick={() => confirm(`Demolish this ${def.name}? This can't be undone.`) && act((g) => demolish(g, plot))}>Demolish</button>
+        </div>
+      )}
+      {def.housing && <p className="muted small">Houses {plotHousing(p)} Villagers.</p>}
       {def.slots > 0 && <div className="eyebrow">Slots {here.length}/{slots(p)}</div>}
 
       {jobsFor(p).map((j) => (

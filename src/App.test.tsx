@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
-import { assign, newGame } from './sim/game'
+import { assign, build, newGame } from './sim/game'
 import { SAVE_KEY, toSave } from './sim/save'
 
 beforeEach(() => { vi.useFakeTimers({ now: new Date('2026-10-02T12:00:00Z') }) })
@@ -59,4 +59,22 @@ test('trying to unassign a Villager mid-Contract shows why, and they keep workin
   expect(screen.getByText(`${name} is busy with a Contract`)).toBeTruthy()
   expect(screen.getByRole('button', { name: `Unassign ${name}` })).toBeTruthy() // still on the Plot panel
   expect(screen.getByRole('contentinfo').textContent).toContain('Settle a Dispute') // Roster shows the Contract
+})
+
+test('demolishing a House asks first, then empties the Plot and refunds half its cost', () => {
+  const game = newGame(1)
+  game.stock.wood = 100
+  localStorage.setItem(SAVE_KEY, toSave(build(game, 3, 'house'), Date.now())) // House on Plot 4, 70 Wood left
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'Plot 4' }))
+  expect(screen.getByText(/get back/).textContent).toContain('15') // half of 30 Wood
+
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+  fireEvent.click(screen.getByRole('button', { name: 'Demolish' }))
+  expect(screen.getByRole('heading', { name: /House/ })).toBeTruthy() // said no: still standing
+
+  fireEvent.click(screen.getByRole('button', { name: 'Demolish' }))
+  expect(confirm).toHaveBeenCalledTimes(2)
+  expect(screen.getByRole('heading', { name: 'Empty Plot' })).toBeTruthy()
+  expect(amount('Wood')).toBe('85')
 })

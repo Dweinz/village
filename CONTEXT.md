@@ -18,6 +18,10 @@ _Avoid_: Tile, lot, grid cell
 A levelled structure on a Plot that offers Jobs and Slots.
 _Avoid_: Structure, facility
 
+**Demolish**:
+To remove a Building from its Plot, freeing the Plot and refunding half of what the Building cost. The Town Hall can't be demolished.
+_Avoid_: Destroy, sell, raze, remove
+
 **Slot**:
 A place in a Building that one Villager can fill to work one of its Jobs.
 _Avoid_: Position, seat

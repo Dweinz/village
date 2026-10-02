@@ -101,7 +101,8 @@ function makeVillager(g: Game): Villager {
   return { id: g.nextId++, name: pick(g, NAMES), level: 1, xp: 0, points: 0, attrs, traits }
 }
 
-export const housing = (g: Game) => g.plots.reduce((n, p) => n + (p ? (BUILDINGS[p.type].housing ?? 0) * p.level : 0), 0)
+export const plotHousing = (p: NonNullable<Plot>) => (BUILDINGS[p.type].housing ?? 0) * p.level
+export const housing = (g: Game) => g.plots.reduce((n, p) => n + (p ? plotHousing(p) : 0), 0)
 export const slots = (p: NonNullable<Plot>) => BUILDINGS[p.type].slots * p.level
 export const currentJob = (v: Villager) => (v.activity?.kind === 'job' ? v.activity : undefined)
 export const jobOf = (g: Game, v: Villager) => { const work = currentJob(v); return work && findJob(g.plots[work.plot]!.type, work.job) }
@@ -112,6 +113,14 @@ export const xpToNext = (level: number) => Math.round(10 * level ** 1.6)
 export const hireCost = (g: Game) => Math.round(50 * 1.5 ** Math.max(0, g.villagers.length - 3))
 export const buildCost = (type: BuildingType, level: number): Bag =>
   Object.fromEntries(Object.entries(BUILDINGS[type].cost).map(([r, n]) => [r, Math.round(n * UPGRADE_SCALE ** level)]))
+/** Half of everything paid for a Building (its level-1 cost and every upgrade), rounded down. */
+export function demolishRefund(p: NonNullable<Plot>): Bag {
+  const refund: Bag = {}
+  for (let level = 0; level < p.level; level++) {
+    for (const [r, n] of Object.entries(buildCost(p.type, level))) refund[r as Res] = (refund[r as Res] ?? 0) + n
+  }
+  return Object.fromEntries(Object.entries(refund).map(([r, n]) => [r, Math.floor(n / 2)]))
+}
 export const maxLevel = (g: Game, type: BuildingType) => (type === 'townhall' ? MAX_BUILDING_LEVEL : g.plots[0]!.level)
 export const canAfford = (g: Game, bag: Bag) => Object.entries(bag).every(([r, n]) => g.stock[r as Res] >= n)
 
@@ -239,6 +248,17 @@ export const build = action((g, plot: number, type: BuildingType) => {
   if (def.unique && has(g, type)) throw new Error(`You can only have one ${def.name}`)
   pay(g, buildCost(type, 0))
   g.plots[plot] = { type, level: 1 }
+})
+
+export const demolish = action((g, plot: number) => {
+  const p = g.plots[plot]
+  if (!p) throw new Error('That plot is empty')
+  if (p.type === 'townhall') throw new Error("The Town Hall can't be demolished")
+  for (const v of workers(g, plot)) rejectIfOnContract(g, v)
+  if (housing(g) - plotHousing(p) < g.villagers.length) throw new Error('Not enough Housing for your Villagers')
+  for (const [r, n] of Object.entries(demolishRefund(p))) g.stock[r as Res] += n
+  for (const v of workers(g, plot)) v.activity = undefined
+  g.plots[plot] = null
 })
 
 export const upgrade = action((g, plot: number) => {
