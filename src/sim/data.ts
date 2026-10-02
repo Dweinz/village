@@ -141,6 +141,8 @@ export const EXPEDITION_CHANCE_PER_DISTANCE = 0.07 // lost per step of distance
 export const EXPEDITION_CHANCE_PER_POINT = 0.01 // gained per point of Strength, Endurance or Perception in the party
 export const EXPEDITION_ATTRS: Attr[] = ['str', 'end', 'per']
 export const EXPEDITION_CHANCE_RANGE: [min: number, max: number] = [0.05, 0.95]
+export const INJURY_CHANCE = 0.4 // per Party member, when an Expedition fails
+export const INJURY_SECONDS = 600 // how long an Injured Villager takes to recover
 
 export const NAMES = [
   'Ada', 'Bram', 'Cora', 'Dag', 'Edda', 'Finn', 'Greta', 'Hal', 'Ivy', 'Jory', 'Kaja', 'Leif', 'Mira', 'Nils',

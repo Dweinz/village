@@ -1,9 +1,9 @@
 // The World Map view: a 2D chart of the Sites around the Settlement. Only reads state and dispatches (ADR 0001).
 import { useState } from 'react'
-import { dur, type Act } from './format'
+import { activityText, dur, type Act } from './format'
 import { EXPEDITION_ATTRS, EXPEDITION_MAX_PARTY, RES_ICON, RES_NAME, SITE_KINDS, SITE_MAX_DISTANCE, SITE_REVEAL_DISTANCE, SPECS, type Res } from './sim/data'
 import {
-  activityName, canJoinExpedition, planExpedition, recallExpedition, sendExpedition, siteById, type ExpeditionTarget, type Game,
+  canJoinExpedition, planExpedition, recallExpedition, sendExpedition, siteById, type ExpeditionTarget, type Game,
 } from './sim/game'
 import type { Site } from './sim/world'
 
@@ -120,7 +120,7 @@ function PartyPicker({ game, target, act }: { game: Game; target: ExpeditionTarg
               <span>
                 <strong>{v.name}</strong> <span className="muted small">Lv {v.level}{v.spec && ` · ${SPECS[v.spec].name}`}</span>
                 <span className="muted small"> · {EXPEDITION_ATTRS.map((a) => `${a.toUpperCase()} ${v.attrs[a]}`).join(' ')}</span>
-                <span className="muted small"> · {activityName(game, v)}</span>
+                <span className="muted small"> · {activityText(game, v)}</span>
               </span>
             </label>
           )

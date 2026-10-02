@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Scene } from './Scene'
 import { ExplorePanel, SitePanel, WorldMap } from './WorldMap'
-import { dur, fmt, type Act } from './format'
+import { activityText, dur, fmt, type Act } from './format'
 import {
   ATTRS, ATTR_NAMES, BUILDINGS, RESOURCES, RES_ICON, RES_NAME, SITE_KINDS, SPECS, SPEC_IDS, SPEC_LEVEL, TRAITS,
   type Bag, type BuildingType, type Res,
 } from './sim/data'
 import {
-  CHAPTERS, OFFLINE_CAP, REROLL_COST, advance, assign, build, buildCost, canAfford, activityName, canSpecialize, currentJob, demolish, demolishRefund, jobOf, plotHousing, hire,
+  CHAPTERS, OFFLINE_CAP, REROLL_COST, advance, assign, build, buildCost, canAfford, canSpecialize, currentJob, demolish, demolishRefund, jobOf, plotHousing, hire,
   hireCost, housing, jobsFor, maxLevel, newGame, raise, reroll, slots, specialize, unassign, upgrade, workers, worldMapUnlocked, xpToNext,
   type Game, type GameEvent, type Villager,
 } from './sim/game'
@@ -45,6 +45,8 @@ function describe(e: GameEvent) {
     case 'worldMap': return '🗺️ The World Map is open: see what lies beyond the walls'
     case 'expeditionSucceeded': return `🧭 ${e.party.join(', ')} ${e.goal === 'reach' ? 'reached' : 'found'} a ${SITE_KINDS[e.site].name}`
     case 'expeditionFailed': return `🥀 ${e.party.join(', ')} came home empty-handed`
+    case 'injured': return `🩹 ${e.name} came back Injured`
+    case 'recovered': return `💪 ${e.name} has recovered`
     case 'siteRevealed': return `🌫️ ${e.party.join(', ')} found a ${SITE_KINDS[e.site].name} at distance ${e.distance}`
   }
 }
@@ -264,7 +266,7 @@ function Roster({ game, act }: { game: Game; act: Act }) {
           <div key={v.id} className="panel villager">
             <div className="row"><strong>{v.name}</strong><span className="lvl">Lv {v.level}</span></div>
             <div className="bar xp"><i style={{ width: `${(v.xp / xpToNext(v.level)) * 100}%` }} /></div>
-            <div className="muted small">{activityName(game, v)}{v.points > 0 && <b className="points"> · {v.points} pts</b>}</div>
+            <div className="muted small">{activityText(game, v)}{v.points > 0 && <b className="points"> · {v.points} pts</b>}</div>
             <Attrs v={v} onRaise={(a) => act((g) => raise(g, v.id, a))} />
             <Traits v={v} />
             {options.length > 0 && (

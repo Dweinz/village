@@ -2,7 +2,7 @@
 import {
   ATTRS, BUILDINGS, EXPEDITION_ATTRS, EXPEDITION_BASE_CHANCE, EXPEDITION_CHANCE_PER_DISTANCE, EXPEDITION_CHANCE_PER_POINT,
   EXPEDITION_CHANCE_RANGE, EXPEDITION_FOOD_PER_MEMBER_DISTANCE, EXPEDITION_GOLD_PER_DISTANCE, EXPEDITION_MAX_PARTY,
-  EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, MAX_BUILDING_LEVEL, NAMES, SPECS, SPEC_LEVEL, TRAITS,
+  EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, INJURY_CHANCE, INJURY_SECONDS, MAX_BUILDING_LEVEL, NAMES, SPECS, SPEC_LEVEL, TRAITS,
   TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type JobDef, type Res, type SpecId, type TraitId,
 } from './data'
 import { mulberry32 } from './random'
@@ -20,10 +20,11 @@ export interface Villager {
   activity?: Activity // undefined = idle
 }
 
-// The one thing a Villager is doing. Trade Routes and Injured become further kinds (v2).
+// The one thing a Villager is doing. Trade Routes become a further kind (v2).
 export type Activity =
   | { kind: 'job'; plot: number; job: string; progress: number }
   | { kind: 'expedition'; expedition: number }
+  | { kind: 'injured'; recoversAt: number } // game time
 
 // Reach a revealed Site, or explore: reveal the nearest hidden one.
 export type ExpeditionTarget = { kind: 'reach'; site: number } | { kind: 'explore' }
@@ -67,6 +68,8 @@ export type GameEvent =
   | { kind: 'expeditionSucceeded'; party: string[]; goal: Expedition['goal']; site: Site['kind'] }
   | { kind: 'expeditionFailed'; party: string[] }
   | { kind: 'siteRevealed'; party: string[]; id: number; site: Site['kind']; distance: number }
+  | { kind: 'injured'; name: string }
+  | { kind: 'recovered'; name: string }
 
 export const UPKEEP = 0.08 // Food per Villager per second
 export const MAX_LEVEL = 30
@@ -186,10 +189,22 @@ const xpMult = (v: Villager) => bonuses(v).reduce((m, b) => (b.buildings ? m : m
 /** What a Villager is doing, in words for the player. */
 export function activityName(g: Game, v: Villager) {
   if (v.activity?.kind === 'expedition') return 'Away on an Expedition'
+  if (v.activity?.kind === 'injured') return 'Injured'
   return jobOf(g, v)?.name ?? 'Idle'
 }
-// Free to go on an Expedition: not away already, not mid-Contract. A Production Job is left behind.
-export const canJoinExpedition = (g: Game, v: Villager) => v.activity?.kind !== 'expedition' && jobOf(g, v)?.kind !== 'contract'
+/**
+ * Why a Villager can't be given something else to do right now, or undefined if they're free.
+ * A Contract can't be abandoned (its cost is paid); away or Injured Villagers can't be called on.
+ * A Production Job doesn't count: it is simply left behind.
+ */
+export function busyReason(g: Game, v: Villager): string | undefined {
+  if (jobOf(g, v)?.kind === 'contract') return `${v.name} is busy with a Contract`
+  if (v.activity?.kind === 'expedition') return `${v.name} is away on an Expedition`
+  if (v.activity?.kind === 'injured') return `${v.name} is Injured`
+}
+export const canJoinExpedition = (g: Game, v: Villager) => !busyReason(g, v)
+/** Seconds until an Injured Villager recovers, or undefined if they aren't Injured. */
+export const recoveryLeft = (g: Game, v: Villager) => (v.activity?.kind === 'injured' ? Math.max(0, v.activity.recoversAt - g.time) : undefined)
 
 function endExpedition(g: Game, x: Expedition) {
   for (const id of x.party) villager(g, id).activity = undefined
@@ -260,6 +275,12 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     addXp(v, job.xp * mult(v, type, 'xp'), ev)
   }
 
+  for (const v of g.villagers) {
+    if (v.activity?.kind !== 'injured' || g.time < v.activity.recoversAt) continue
+    v.activity = undefined
+    ev.push({ kind: 'recovered', name: v.name })
+  }
+
   for (const x of [...g.expeditions]) {
     x.progress = Math.min(x.duration, x.progress + s)
     if (x.progress < x.duration) continue
@@ -278,6 +299,11 @@ function step(g: Game, s: number, ev: GameEvent[]) {
       for (const v of party) addXp(v, EXPEDITION_XP_PER_DISTANCE * site.distance * xpMult(v), ev)
     } else {
       ev.push({ kind: 'expeditionFailed', party: names })
+      for (const v of party) {
+        if (rand(g) >= INJURY_CHANCE) continue
+        v.activity = { kind: 'injured', recoversAt: g.time + INJURY_SECONDS }
+        ev.push({ kind: 'injured', name: v.name })
+      }
     }
   }
 
@@ -312,10 +338,9 @@ const action = <A extends unknown[]>(fn: (g: Game, ...a: A) => void) => (g0: Gam
   fn(g, ...a)
   return g
 }
-// A Contract can't be abandoned or swapped (its cost is already paid), and a Villager away can't be called on.
 const rejectIfCommitted = (g: Game, v: Villager) => {
-  if (jobOf(g, v)?.kind === 'contract') throw new Error(`${v.name} is busy with a Contract`)
-  if (v.activity?.kind === 'expedition') throw new Error(`${v.name} is away on an Expedition`)
+  const reason = busyReason(g, v)
+  if (reason) throw new Error(reason)
 }
 
 // The nearest hidden Site that no Expedition is already exploring.

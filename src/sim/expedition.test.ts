@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest'
+import { rich } from './test-helpers'
 import type { TraitId } from './data'
 import { UPKEEP, advance, assign, newGame, planExpedition, recallExpedition, sendExpedition, unassign, xpToNext, type Game, type GameEvent } from './game'
 
-const rich = (g: Game) => { g.stock = { gold: 5000, wood: 5000, stone: 0, food: 5000, ore: 0 }; return g }
 const firstRevealed = (g: Game) => g.worldMap.find((s) => s.discovery === 'revealed')!
 
 test('a reaching Expedition is rolled once at the end: success reaches the Site and grants XP, failure brings nothing', () => {
@@ -20,7 +20,7 @@ test('a reaching Expedition is rolled once at the end: success reaches the Site 
     expect(ev.some((e) => e.kind === 'expeditionFailed')).toBe(!succeeded)
     expect(g.worldMap.find((s) => s.id === site.id)!.discovery).toBe(succeeded ? 'reached' : 'revealed')
     expect(v.level > 1 || v.xp > 0).toBe(succeeded)
-    expect(v.activity).toBeUndefined() // home again
+    expect(v.activity === undefined || (!succeeded && v.activity.kind === 'injured')).toBe(true) // home again, maybe hurt
     expect(g.expeditions).toHaveLength(0)
   }
   expect(outcomes).toEqual(new Set(['success', 'failure']))

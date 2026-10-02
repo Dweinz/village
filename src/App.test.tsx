@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
-import { assign, build, newGame, sendExpedition } from './sim/game'
+import { advance, assign, build, newGame, sendExpedition } from './sim/game'
 import { SITE_KINDS } from './sim/data'
 import { SAVE_KEY, toSave } from './sim/save'
 
@@ -196,4 +196,49 @@ test('the party picker says what is missing when the Stockpile cannot pay for th
   fireEvent.click(within(panel).getByRole('checkbox', { name: new RegExp(`^${game.villagers[0].name}`) }))
   expect(within(panel).getByText('Not enough Food')).toBeTruthy()
   expect((within(panel).getByRole('button', { name: 'Send Expedition' }) as HTMLButtonElement).disabled).toBe(true)
+})
+
+test('an Injured Villager shows their recovery time in the Roster and cannot join a Party', () => {
+  const game = mapGame()
+  const [ada] = game.villagers
+  ada.activity = { kind: 'injured', recoversAt: game.time + 250 }
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  expect(screen.getByRole('contentinfo').textContent).toContain('Injured · 4m 10s')
+
+  fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Explore the fog' }))
+  const pick = screen.getByRole('checkbox', { name: new RegExp(`^${ada.name}`) }) as HTMLInputElement
+  expect(pick.disabled).toBe(true)
+  expect(pick.closest('label')!.textContent).toContain('Injured · 4m 10s')
+})
+
+test('injuries and recoveries while the game was closed are in the Report', () => {
+  const game = mapGame()
+  const [ada, bo] = game.villagers
+  ada.activity = { kind: 'injured', recoversAt: game.time + 60 }
+  bo.activity = { kind: 'injured', recoversAt: game.time + 60 }
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now() - 3600_000))
+  render(<App />)
+  const report = screen.getByRole('dialog', { name: 'While you were away' })
+  expect(within(report).getByText(`💪 ${ada.name} has recovered`)).toBeTruthy()
+  expect(within(report).getByText(`💪 ${bo.name} has recovered`)).toBeTruthy()
+})
+
+test('a Villager hurt on a failed Expedition while the game was closed shows up Injured in the Report', () => {
+  for (let seed = 1; seed < 400; seed++) {
+    const game = mapGame()
+    game.seed = seed
+    const sent = sendExpedition(game, [1, 2, 3], { kind: 'explore' })
+    const back = advance(sent, sent.expeditions[0].duration)
+    const hurt = back.villagers.find((v) => v.activity?.kind === 'injured')
+    if (!hurt) continue // this seed's Party came home unhurt
+    localStorage.setItem(SAVE_KEY, toSave(sent, Date.now() - (sent.expeditions[0].duration + 5) * 1000))
+    render(<App />)
+    const report = screen.getByRole('dialog', { name: 'While you were away' })
+    expect(within(report).getByText(`🩹 ${hurt.name} came back Injured`)).toBeTruthy()
+    expect(screen.getByRole('contentinfo').textContent).toContain('Injured · ')
+    return
+  }
+  throw new Error('no seed produced an injury')
 })
