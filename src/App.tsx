@@ -9,15 +9,17 @@ import {
   hireCost, housing, jobsFor, maxLevel, newGame, raise, reroll, slots, specialize, unassign, upgrade, workers, xpToNext,
   type Game, type GameEvent, type Villager,
 } from './sim/game'
+import { fromSave, toSave } from './sim/save'
 
 const SAVE_KEY = 'hearthhold-save'
 
 interface Report { seconds: number; capped: boolean; before: Game['stock']; after: Game['stock']; events: GameEvent[] }
 
 function boot(): { game: Game; report: Report | null } {
-  let saved: { game: Game; savedAt: number } | null = null
-  try { saved = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null') } catch { /* corrupt save: start fresh */ }
-  if (!saved?.game) return { game: newGame(), report: null }
+  let text = null
+  try { text = localStorage.getItem(SAVE_KEY) } catch { /* storage blocked: start fresh */ }
+  const saved = text === null ? null : fromSave(text)
+  if (!saved) return { game: newGame(), report: null } // no save, or a corrupt one: start fresh
   const away = (Date.now() - saved.savedAt) / 1000
   const seconds = Math.min(away, OFFLINE_CAP)
   if (seconds < 60) return { game: advance(saved.game, Math.max(0, seconds)), report: null }
@@ -64,7 +66,7 @@ export default function App() {
 
   useEffect(() => {
     let last = performance.now()
-    const save = () => { if (!resetting.current) localStorage.setItem(SAVE_KEY, JSON.stringify({ game: ref.current, savedAt: Date.now() })) }
+    const save = () => { if (!resetting.current) localStorage.setItem(SAVE_KEY, toSave(ref.current, Date.now())) }
     const tick = setInterval(() => {
       const now = performance.now()
       const events: GameEvent[] = []

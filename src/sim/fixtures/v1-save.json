@@ -1,0 +1,168 @@
+{
+  "game": {
+    "time": 420,
+    "seed": 1128212688,
+    "stock": {
+      "gold": 174,
+      "wood": 142,
+      "stone": 0,
+      "food": 97.20000000000063,
+      "ore": 0
+    },
+    "plots": [
+      {
+        "type": "townhall",
+        "level": 1
+      },
+      {
+        "type": "farm",
+        "level": 1
+      },
+      {
+        "type": "lumbercamp",
+        "level": 1
+      },
+      {
+        "type": "house",
+        "level": 1
+      },
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "villagers": [
+      {
+        "id": 1,
+        "name": "Ulla",
+        "level": 3,
+        "xp": 44,
+        "points": 4,
+        "attrs": {
+          "str": 4,
+          "dex": 3,
+          "int": 5,
+          "cha": 4,
+          "end": 1,
+          "per": 3
+        },
+        "traits": [
+          "silver_tongue"
+        ],
+        "job": {
+          "plot": 1,
+          "job": "fields",
+          "progress": 0
+        }
+      },
+      {
+        "id": 2,
+        "name": "Quinn",
+        "level": 3,
+        "xp": 36,
+        "points": 4,
+        "attrs": {
+          "str": 3,
+          "dex": 2,
+          "int": 5,
+          "cha": 4,
+          "end": 2,
+          "per": 1
+        },
+        "traits": [],
+        "job": {
+          "plot": 2,
+          "job": "chop",
+          "progress": 2.24
+        }
+      },
+      {
+        "id": 3,
+        "name": "Edda",
+        "level": 3,
+        "xp": 32,
+        "points": 4,
+        "attrs": {
+          "str": 4,
+          "dex": 1,
+          "int": 3,
+          "cha": 5,
+          "end": 1,
+          "per": 3
+        },
+        "traits": [
+          "lumberjack",
+          "green_thumb"
+        ],
+        "job": {
+          "plot": 0,
+          "job": "taxes",
+          "progress": 14.399999999999997
+        }
+      }
+    ],
+    "recruits": [
+      {
+        "id": 7,
+        "name": "Dag",
+        "level": 1,
+        "xp": 0,
+        "points": 0,
+        "attrs": {
+          "str": 4,
+          "dex": 4,
+          "int": 5,
+          "cha": 1,
+          "end": 5,
+          "per": 3
+        },
+        "traits": []
+      },
+      {
+        "id": 8,
+        "name": "Greta",
+        "level": 1,
+        "xp": 0,
+        "points": 0,
+        "attrs": {
+          "str": 1,
+          "dex": 1,
+          "int": 2,
+          "cha": 3,
+          "end": 4,
+          "per": 5
+        },
+        "traits": [
+          "tireless",
+          "quick_learner"
+        ]
+      },
+      {
+        "id": 9,
+        "name": "Vidar",
+        "level": 1,
+        "xp": 0,
+        "points": 0,
+        "attrs": {
+          "str": 4,
+          "dex": 1,
+          "int": 3,
+          "cha": 5,
+          "end": 1,
+          "per": 5
+        },
+        "traits": []
+      }
+    ],
+    "tavernRefreshAt": 601,
+    "chapter": 0,
+    "done": [
+      "wood30",
+      "house"
+    ],
+    "starving": false,
+    "nextId": 10
+  },
+  "savedAt": 1790000000000
+}
