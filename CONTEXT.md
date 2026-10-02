@@ -78,6 +78,14 @@ _Avoid_: Work, loop, idle job
 A one-off Job with a fixed duration and a reward that is paid once.
 _Avoid_: Task, quest, bounty
 
+**Party**:
+The one to three Villagers sent together on an Expedition.
+_Avoid_: Team, squad, group
+
+**Explore**:
+To send an Expedition into the fog, toward the nearest hidden Site, to reveal it (as opposed to reaching a Site already revealed).
+_Avoid_: Scout, search
+
 **Expedition**:
 A timed journey from a Settlement onto the World Map to reveal or reach Sites, which can succeed or fail.
 _Avoid_: Mission, scouting run

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Scene } from './Scene'
-import { SitePanel, WorldMap } from './WorldMap'
+import { ExplorePanel, SitePanel, WorldMap } from './WorldMap'
+import { dur, fmt, type Act } from './format'
 import {
-  ATTRS, ATTR_NAMES, BUILDINGS, RESOURCES, RES_ICON, RES_NAME, SPECS, SPEC_IDS, SPEC_LEVEL, TRAITS,
+  ATTRS, ATTR_NAMES, BUILDINGS, RESOURCES, RES_ICON, RES_NAME, SITE_KINDS, SPECS, SPEC_IDS, SPEC_LEVEL, TRAITS,
   type Bag, type BuildingType, type Res,
 } from './sim/data'
 import {
-  CHAPTERS, OFFLINE_CAP, REROLL_COST, advance, assign, build, buildCost, canAfford, canSpecialize, currentJob, demolish, demolishRefund, jobOf, plotHousing, hire,
+  CHAPTERS, OFFLINE_CAP, REROLL_COST, advance, assign, build, buildCost, canAfford, activityName, canSpecialize, currentJob, demolish, demolishRefund, jobOf, plotHousing, hire,
   hireCost, housing, jobsFor, maxLevel, newGame, raise, reroll, slots, specialize, unassign, upgrade, workers, worldMapUnlocked, xpToNext,
   type Game, type GameEvent, type Villager,
 } from './sim/game'
@@ -27,8 +28,6 @@ function boot(): { game: Game; report: Report | null } {
   return { game, report: { seconds, capped: away > OFFLINE_CAP, before: saved.game.stock, after: game.stock, events } }
 }
 
-const fmt = (n: number) => (n < 1000 ? Math.floor(n).toString() : n < 1e6 ? (n / 1e3).toFixed(1) + 'k' : (n / 1e6).toFixed(1) + 'M')
-const dur = (s: number) => (s < 60 ? `${Math.ceil(s)}s` : s < 3600 ? `${Math.floor(s / 60)}m ${Math.floor(s % 60)}s` : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`)
 const Cost = ({ bag, game }: { bag: Bag; game?: Game }) => (
   <span className="cost">
     {Object.entries(bag).map(([r, n]) => (
@@ -41,9 +40,12 @@ function describe(e: GameEvent) {
   switch (e.kind) {
     case 'level': return `⭐ ${e.name} reached level ${e.level}`
     case 'contract': return `📜 ${e.name} finished ${e.job}`
-    case 'chapter': return CHAPTERS[e.chapter] ? `📖 Chapter ${e.chapter + 1}: ${CHAPTERS[e.chapter].name}` : '🏆 All Chapters complete — Expeditions are coming next!'
+    case 'chapter': return CHAPTERS[e.chapter] ? `📖 Chapter ${e.chapter + 1}: ${CHAPTERS[e.chapter].name}` : '🏆 All Chapters complete: explore the World Map while more is on the way'
     case 'starving': return '⚠️ Food ran out — everyone works at half speed'
     case 'worldMap': return '🗺️ The World Map is open: see what lies beyond the walls'
+    case 'expeditionSucceeded': return `🧭 ${e.party.join(', ')} ${e.goal === 'reach' ? 'reached' : 'found'} a ${SITE_KINDS[e.site].name}`
+    case 'expeditionFailed': return `🥀 ${e.party.join(', ')} came home empty-handed`
+    case 'siteRevealed': return `🌫️ ${e.party.join(', ')} found a ${SITE_KINDS[e.site].name} at distance ${e.distance}`
   }
 }
 
@@ -53,7 +55,7 @@ export default function App() {
   const [report, setReport] = useState(initial.report)
   const [selected, setSelected] = useState<number | null>(null)
   const [view, setView] = useState<View>('settlement')
-  const [site, setSite] = useState<number | null>(null)
+  const [site, setSite] = useState<number | 'explore' | null>(null)
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([])
   const ref = useRef(game)
   const resetting = useRef(false)
@@ -91,12 +93,13 @@ export default function App() {
   return (
     <>
       {view === 'map'
-        ? <WorldMap game={game} selected={site} onSelect={setSite} />
+        ? <WorldMap game={game} selected={site} onSelect={setSite} onExplore={() => setSite('explore')} act={act} />
         : <Scene game={game} selected={selected} onSelect={setSelected} />}
       <TopBar game={game} onReset={reset} view={view} onView={(v) => { setView(v); setSite(null) }} />
       <Objectives game={game} />
       {view === 'settlement' && selected !== null && <PlotPanel game={game} plot={selected} act={act} onClose={() => setSelected(null)} />}
-      {view === 'map' && site !== null && <SitePanel site={game.worldMap.find((s) => s.id === site)!} onClose={() => setSite(null)} />}
+      {view === 'map' && site === 'explore' && <ExplorePanel game={game} act={act} onClose={() => setSite(null)} />}
+      {view === 'map' && typeof site === 'number' && <SitePanel game={game} site={game.worldMap.find((s) => s.id === site)!} act={act} onClose={() => setSite(null)} />}
       <Roster game={game} act={act} />
       <div className="toasts">{toasts.map((t) => <div key={t.id} className="toast">{t.text}</div>)}</div>
       {report && <ReportModal report={report} onClose={() => setReport(null)} />}
@@ -104,7 +107,6 @@ export default function App() {
   )
 }
 
-type Act = (fn: (g: Game) => Game) => void
 type View = 'settlement' | 'map'
 
 function TopBar({ game, onReset, view, onView }: { game: Game; onReset: () => void; view: View; onView: (v: View) => void }) {
@@ -132,7 +134,7 @@ function Objectives({ game }: { game: Game }) {
           <h2>{ch.name}</h2>
           <ul>{ch.objectives.map((o) => <li key={o.id} className={game.done.includes(o.id) ? 'done' : ''}>{o.text}</li>)}</ul>
         </>
-      ) : <><div className="eyebrow">All Chapters complete</div><h2>Your town thrives</h2><p className="muted">Expeditions are coming next.</p></>}
+      ) : <><div className="eyebrow">All Chapters complete</div><h2>Your town thrives</h2><p className="muted">Send Expeditions from the World Map. More Chapters are on the way.</p></>}
     </aside>
   )
 }
@@ -262,7 +264,7 @@ function Roster({ game, act }: { game: Game; act: Act }) {
           <div key={v.id} className="panel villager">
             <div className="row"><strong>{v.name}</strong><span className="lvl">Lv {v.level}</span></div>
             <div className="bar xp"><i style={{ width: `${(v.xp / xpToNext(v.level)) * 100}%` }} /></div>
-            <div className="muted small">{job ? job.name : 'Idle'}{v.points > 0 && <b className="points"> · {v.points} pts</b>}</div>
+            <div className="muted small">{activityName(game, v)}{v.points > 0 && <b className="points"> · {v.points} pts</b>}</div>
             <Attrs v={v} onRaise={(a) => act((g) => raise(g, v.id, a))} />
             <Traits v={v} />
             {options.length > 0 && (

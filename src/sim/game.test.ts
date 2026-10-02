@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { advance, assign, build, demolish, hire, newGame, raise, unassign, upgrade, workers, type GameEvent } from './game'
+import { advance, assign, build, demolish, hire, newGame, raise, sendExpedition, unassign, upgrade, workers, type GameEvent } from './game'
 
 test('a Production Job yields Materials and XP each cycle', () => {
   let g = assign(newGame(1), 1, 2, 'chop')
@@ -8,11 +8,14 @@ test('a Production Job yields Materials and XP each cycle', () => {
   expect(g.villagers[0].xp + g.villagers[0].level).toBeGreaterThan(1)
 })
 
-test('Offline Progress in one big step matches playing it live', () => {
-  const g = assign(assign(newGame(7), 1, 1, 'fields'), 2, 0, 'taxes')
+test('Offline Progress in one big step matches playing it live, Expeditions included', () => {
+  const start = assign(assign(newGame(7), 1, 1, 'fields'), 2, 0, 'taxes')
+  start.stock.gold = 500
+  const g = sendExpedition(start, [3], { kind: 'explore' }) // back within the 20 minutes, rolled on the way
   let live = g
-  for (let i = 0; i < 600; i++) live = advance(live, 1)
-  expect(advance(g, 600)).toEqual(live)
+  for (let i = 0; i < 1200; i++) live = advance(live, 1)
+  expect(live.expeditions).toHaveLength(0)
+  expect(advance(g, 1200)).toEqual(live)
 })
 
 test('running out of Food halves speed instead of killing anyone', () => {

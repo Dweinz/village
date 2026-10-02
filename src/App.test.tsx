@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
-import { assign, build, newGame } from './sim/game'
+import { assign, build, newGame, sendExpedition } from './sim/game'
 import { SITE_KINDS } from './sim/data'
 import { SAVE_KEY, toSave } from './sim/save'
 
@@ -123,4 +123,77 @@ test('completing Beyond the Walls announces the World Map and shows the button t
   passTime(1000)
   expect(screen.getByText(/The World Map is open/)).toBeTruthy()
   expect(screen.getByRole('button', { name: 'World Map' })).toBeTruthy()
+})
+
+const mapGame = () => {
+  const game = newGame(1)
+  game.chapter = 4 // World Map unlocked
+  game.stock = { gold: 500, wood: 500, stone: 0, food: 500, ore: 0 }
+  return game
+}
+
+test('sending an Expedition from a Site: pick a party, see the odds, and hear back when it returns', () => {
+  const game = mapGame()
+  const [ada] = game.villagers
+  const site = game.worldMap.find((s) => s.discovery === 'revealed')!
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+  fireEvent.click(screen.getByRole('button', { name: `${SITE_KINDS[site.kind].name}, distance ${site.distance}` }))
+
+  const panel = screen.getByRole('complementary', { name: SITE_KINDS[site.kind].name })
+  fireEvent.click(within(panel).getByRole('checkbox', { name: new RegExp(`^${ada.name}`) }))
+  expect(within(panel).getByText(/% chance/)).toBeTruthy()
+  fireEvent.click(within(panel).getByRole('button', { name: 'Send Expedition' }))
+
+  expect(screen.getByRole('contentinfo').textContent).toContain('Away on an Expedition')
+  const underway = screen.getByRole('list', { name: 'Expeditions' })
+  expect(within(underway).getByText(new RegExp(ada.name))).toBeTruthy()
+
+  passTime(site.distance * 90_000 + 1000)
+  expect(screen.getByText(new RegExp(`${ada.name} (reached a ${SITE_KINDS[site.kind].name}|came home empty-handed)`))).toBeTruthy()
+  expect(screen.queryByRole('list', { name: 'Expeditions' })).toBeNull()
+  expect(screen.getByRole('contentinfo').textContent).not.toContain('Away on an Expedition')
+})
+
+test('exploring the fog from the map, then recalling the party before it gets there', () => {
+  const game = mapGame()
+  const [ada] = game.villagers
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Explore the fog' }))
+
+  const panel = screen.getByRole('complementary', { name: 'Explore the fog' })
+  fireEvent.click(within(panel).getByRole('checkbox', { name: new RegExp(`^${ada.name}`) }))
+  fireEvent.click(within(panel).getByRole('button', { name: 'Send Expedition' }))
+  const gold = amount('Gold')
+
+  fireEvent.click(within(screen.getByRole('list', { name: 'Expeditions' })).getByRole('button', { name: `Recall ${ada.name}` }))
+  expect(screen.queryByRole('list', { name: 'Expeditions' })).toBeNull()
+  expect(screen.getByRole('contentinfo').textContent).not.toContain('Away on an Expedition')
+  expect(amount('Gold')).toBe(gold) // no refund
+})
+
+test('an Expedition that returned while the game was closed is in the Report', () => {
+  const game = mapGame()
+  const [ada] = game.villagers
+  const twoHoursAgo = Date.now() - 2 * 3600_000
+  localStorage.setItem(SAVE_KEY, toSave(sendExpedition(game, [ada.id], { kind: 'explore' }), twoHoursAgo))
+  render(<App />)
+  const report = screen.getByRole('dialog', { name: 'While you were away' })
+  expect(within(report).getByText(new RegExp(`${ada.name} (found a|came home empty-handed)`))).toBeTruthy()
+})
+
+test('the party picker says what is missing when the Stockpile cannot pay for the Expedition', () => {
+  const game = mapGame()
+  game.stock.food = 0
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'World Map' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Explore the fog' }))
+  const panel = screen.getByRole('complementary', { name: 'Explore the fog' })
+  fireEvent.click(within(panel).getByRole('checkbox', { name: new RegExp(`^${game.villagers[0].name}`) }))
+  expect(within(panel).getByText('Not enough Food')).toBeTruthy()
+  expect((within(panel).getByRole('button', { name: 'Send Expedition' }) as HTMLButtonElement).disabled).toBe(true)
 })

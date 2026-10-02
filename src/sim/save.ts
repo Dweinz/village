@@ -16,6 +16,7 @@ export const MIGRATIONS: Migration[] = [
     villagers: game.villagers.map(({ job, ...v }: { job?: object }) => (job ? { ...v, activity: { kind: 'job', ...job } } : v)),
   }),
   (game) => ({ ...game, worldMap: generateWorldMap(game.seed) }), // v3 → v4: the World Map, from the save's current seed
+  (game) => ({ ...game, expeditions: [] }), // v4 → v5: Expeditions (none under way in older saves)
 ]
 
 export const SAVE_VERSION = MIGRATIONS.length + 1

@@ -100,7 +100,13 @@ select { width: 100%; margin-top: 8px; background: rgba(47, 125, 109, 0.12); col
 .worldmap .home, .worldmap .site { position: absolute; transform: translate(-50%, -50%); font-size: 22px; line-height: 1; }
 .worldmap .site { padding: 6px; border-radius: 50%; background: var(--glass); box-shadow: 0 2px 8px rgba(20, 50, 60, 0.2); }
 .worldmap .site.selected { outline: 3px solid var(--accent-2); }
-.fog-note { position: absolute; bottom: 205px; margin: 0; }
+.worldmap .trail { stroke: var(--accent-2); stroke-width: 0.6; stroke-dasharray: 1.2 1; }
+.map-foot { position: absolute; bottom: 200px; display: flex; gap: 12px; align-items: center; }
+.underway { left: 16px; bottom: 236px; width: 280px; margin: 0; padding: 8px 12px; list-style: none; }
+.underway li + li { margin-top: 8px; }
+.pick { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+.pick input { margin-top: 3px; }
+button.wide { width: 100%; margin-top: 8px; }
 
 @media (max-width: 760px) {
   .topbar { gap: 10px; font-size: 12px; left: 8px; right: 8px; transform: none; overflow-x: auto; }
@@ -110,4 +116,5 @@ select { width: 100%; margin-top: 8px; background: rgba(47, 125, 109, 0.12); col
   .side { left: 8px; right: 8px; width: auto; top: auto; bottom: 200px; max-height: 45vh; }
   .villager { flex-basis: 180px; }
   .worldmap { padding-top: 110px; }
+  .underway { left: 8px; right: 8px; width: auto; }
 }

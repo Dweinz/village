@@ -1,7 +1,9 @@
 // Headless simulation (ADR 0001). Pure data in, pure data out: no DOM, no rendering, no wall clock.
 import {
-  ATTRS, BUILDINGS, MAX_BUILDING_LEVEL, NAMES, SPECS, SPEC_LEVEL, TRAITS, TRAIT_IDS, UPGRADE_SCALE,
-  type Attr, type Bag, type Bonus, type BuildingType, type JobDef, type Res, type SpecId, type TraitId,
+  ATTRS, BUILDINGS, EXPEDITION_ATTRS, EXPEDITION_BASE_CHANCE, EXPEDITION_CHANCE_PER_DISTANCE, EXPEDITION_CHANCE_PER_POINT,
+  EXPEDITION_CHANCE_RANGE, EXPEDITION_FOOD_PER_MEMBER_DISTANCE, EXPEDITION_GOLD_PER_DISTANCE, EXPEDITION_MAX_PARTY,
+  EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, MAX_BUILDING_LEVEL, NAMES, SPECS, SPEC_LEVEL, TRAITS,
+  TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type JobDef, type Res, type SpecId, type TraitId,
 } from './data'
 import { mulberry32 } from './random'
 import { generateWorldMap, type Site } from './world'
@@ -18,8 +20,25 @@ export interface Villager {
   activity?: Activity // undefined = idle
 }
 
-// The one thing a Villager is doing. Expeditions, Trade Routes and Injured become further kinds (v2).
-export type Activity = { kind: 'job'; plot: number; job: string; progress: number }
+// The one thing a Villager is doing. Trade Routes and Injured become further kinds (v2).
+export type Activity =
+  | { kind: 'job'; plot: number; job: string; progress: number }
+  | { kind: 'expedition'; expedition: number }
+
+// Reach a revealed Site, or explore: reveal the nearest hidden one.
+export type ExpeditionTarget = { kind: 'reach'; site: number } | { kind: 'explore' }
+
+export interface ExpeditionPlan { site: Site; duration: number; cost: Bag; chance: number }
+
+export interface Expedition {
+  id: number
+  party: number[] // Villager ids
+  goal: ExpeditionTarget['kind']
+  site: number
+  duration: number
+  progress: number
+  chance: number // fixed when the party sets out, as shown in the preview
+}
 
 export type Plot = { type: BuildingType; level: number } | null
 
@@ -36,6 +55,7 @@ export interface Game {
   starving: boolean
   nextId: number
   worldMap: Site[]
+  expeditions: Expedition[]
 }
 
 export type GameEvent =
@@ -44,6 +64,9 @@ export type GameEvent =
   | { kind: 'chapter'; chapter: number }
   | { kind: 'starving' }
   | { kind: 'worldMap' }
+  | { kind: 'expeditionSucceeded'; party: string[]; goal: Expedition['goal']; site: Site['kind'] }
+  | { kind: 'expeditionFailed'; party: string[] }
+  | { kind: 'siteRevealed'; party: string[]; id: number; site: Site['kind']; distance: number }
 
 export const UPKEEP = 0.08 // Food per Villager per second
 export const MAX_LEVEL = 30
@@ -155,6 +178,24 @@ export function canSpecialize(g: Game, v: Villager, id: SpecId) {
   return !v.spec && v.level >= SPEC_LEVEL && has(g, 'guildhall') && meetsReq
 }
 
+const villager = (g: Game, id: number) => g.villagers.find((v) => v.id === id)!
+export const siteById = (g: Game, id: number) => g.worldMap.find((s) => s.id === id)!
+// XP bonuses that apply everywhere (e.g. Quick Learner, Scholar), for XP earned outside a Building.
+const xpMult = (v: Villager) => bonuses(v).reduce((m, b) => (b.buildings ? m : m * (1 + (b.xp ?? 0))), 1)
+
+/** What a Villager is doing, in words for the player. */
+export function activityName(g: Game, v: Villager) {
+  if (v.activity?.kind === 'expedition') return 'Away on an Expedition'
+  return jobOf(g, v)?.name ?? 'Idle'
+}
+// Free to go on an Expedition: not away already, not mid-Contract. A Production Job is left behind.
+export const canJoinExpedition = (g: Game, v: Villager) => v.activity?.kind !== 'expedition' && jobOf(g, v)?.kind !== 'contract'
+
+function endExpedition(g: Game, x: Expedition) {
+  for (const id of x.party) villager(g, id).activity = undefined
+  g.expeditions = g.expeditions.filter((e) => e !== x)
+}
+
 function pay(g: Game, bag: Bag) {
   if (!canAfford(g, bag)) throw new Error('Not enough resources')
   for (const [r, n] of Object.entries(bag)) g.stock[r as Res] -= n
@@ -177,7 +218,7 @@ export function newGame(seed = Date.now()): Game {
   const g: Game = {
     time: 0, seed, stock: { gold: 30, wood: 20, stone: 0, food: 30, ore: 0 },
     plots: Array(PLOT_COUNT).fill(null), villagers: [], recruits: [], tavernRefreshAt: 0,
-    chapter: 0, done: [], starving: false, nextId: 1, worldMap: generateWorldMap(seed),
+    chapter: 0, done: [], starving: false, nextId: 1, worldMap: generateWorldMap(seed), expeditions: [],
   }
   g.plots[0] = { type: 'townhall', level: 1 }
   g.plots[1] = { type: 'farm', level: 1 }
@@ -219,6 +260,27 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     addXp(v, job.xp * mult(v, type, 'xp'), ev)
   }
 
+  for (const x of [...g.expeditions]) {
+    x.progress = Math.min(x.duration, x.progress + s)
+    if (x.progress < x.duration) continue
+    const party = x.party.map((id) => villager(g, id))
+    const names = party.map((v) => v.name)
+    const site = siteById(g, x.site)
+    endExpedition(g, x)
+    if (rand(g) < x.chance) {
+      if (x.goal === 'reach') {
+        site.discovery = 'reached'
+        ev.push({ kind: 'expeditionSucceeded', party: names, goal: x.goal, site: site.kind })
+      } else {
+        site.discovery = 'revealed'
+        ev.push({ kind: 'siteRevealed', party: names, id: site.id, site: site.kind, distance: site.distance })
+      }
+      for (const v of party) addXp(v, EXPEDITION_XP_PER_DISTANCE * site.distance * xpMult(v), ev)
+    } else {
+      ev.push({ kind: 'expeditionFailed', party: names })
+    }
+  }
+
   if (g.time >= g.tavernRefreshAt) {
     g.recruits = [0, 1, 2].map(() => makeVillager(g))
     g.tavernRefreshAt = g.time + TAVERN_REFRESH
@@ -250,11 +312,54 @@ const action = <A extends unknown[]>(fn: (g: Game, ...a: A) => void) => (g0: Gam
   fn(g, ...a)
   return g
 }
-const villager = (g: Game, id: number) => g.villagers.find((v) => v.id === id)!
-// A Contract can't be abandoned or swapped: its cost is already paid.
-const rejectIfOnContract = (g: Game, v: Villager) => {
+// A Contract can't be abandoned or swapped (its cost is already paid), and a Villager away can't be called on.
+const rejectIfCommitted = (g: Game, v: Villager) => {
   if (jobOf(g, v)?.kind === 'contract') throw new Error(`${v.name} is busy with a Contract`)
+  if (v.activity?.kind === 'expedition') throw new Error(`${v.name} is away on an Expedition`)
 }
+
+// The nearest hidden Site that no Expedition is already exploring.
+const nextToExplore = (g: Game) => g.worldMap
+  .filter((s) => s.discovery === 'hidden' && !g.expeditions.some((x) => x.goal === 'explore' && x.site === s.id))
+  .sort((a, b) => a.distance - b.distance || a.id - b.id)[0]
+
+/** What an Expedition would take and risk. Throws a player-facing Error if the party or target is invalid. */
+export function planExpedition(g: Game, party: number[], target: ExpeditionTarget): ExpeditionPlan {
+  if (party.length === 0) throw new Error('Choose at least one Villager')
+  if (party.length > EXPEDITION_MAX_PARTY || new Set(party).size < party.length) throw new Error(`A party is at most ${EXPEDITION_MAX_PARTY} Villagers`)
+  const site = target.kind === 'reach' ? g.worldMap.find((s) => s.id === target.site) : nextToExplore(g)
+  if (!site) throw new Error(target.kind === 'reach' ? 'No such Site' : 'Nothing left to explore')
+  if (site.discovery === 'hidden' && target.kind === 'reach') throw new Error('That Site is still hidden in the fog')
+  if (site.discovery === 'reached' && target.kind === 'reach') throw new Error('Already reached')
+  if (target.kind === 'reach' && g.expeditions.some((x) => x.goal === 'reach' && x.site === site.id)) throw new Error('An Expedition is already on its way there')
+  if (party.some((id) => !g.villagers.some((v) => v.id === id))) throw new Error('No such Villager')
+  const members = party.map((id) => villager(g, id))
+  for (const v of members) rejectIfCommitted(g, v) // a Villager on a Production Job leaves it to go
+  const points = members.reduce((n, v) => n + EXPEDITION_ATTRS.reduce((m, a) => m + v.attrs[a], 0), 0)
+  const [lo, hi] = EXPEDITION_CHANCE_RANGE
+  const bonus = members.reduce((n, v) => n + bonuses(v).reduce((m, b) => m + (b.expedition ?? 0), 0), 0)
+  const raw = EXPEDITION_BASE_CHANCE - EXPEDITION_CHANCE_PER_DISTANCE * site.distance + EXPEDITION_CHANCE_PER_POINT * points + bonus
+  return {
+    site,
+    duration: EXPEDITION_SECONDS_PER_DISTANCE * site.distance,
+    cost: { food: EXPEDITION_FOOD_PER_MEMBER_DISTANCE * site.distance * party.length, gold: EXPEDITION_GOLD_PER_DISTANCE * site.distance },
+    chance: Math.min(hi, Math.max(lo, raw)),
+  }
+}
+
+export const sendExpedition = action((g, party: number[], target: ExpeditionTarget) => {
+  const plan = planExpedition(g, party, target)
+  pay(g, plan.cost)
+  const id = g.nextId++
+  g.expeditions.push({ id, party, goal: target.kind, site: plan.site.id, duration: plan.duration, progress: 0, chance: plan.chance })
+  for (const v of party) villager(g, v).activity = { kind: 'expedition', expedition: id }
+})
+
+export const recallExpedition = action((g, id: number) => {
+  const x = g.expeditions.find((e) => e.id === id)
+  if (!x) throw new Error('That Expedition is already home')
+  endExpedition(g, x)
+})
 
 export const build = action((g, plot: number, type: BuildingType) => {
   const def = BUILDINGS[type]
@@ -269,7 +374,7 @@ export const demolish = action((g, plot: number) => {
   const p = g.plots[plot]
   if (!p) throw new Error('That plot is empty')
   if (p.type === 'townhall') throw new Error("The Town Hall can't be demolished")
-  for (const v of workers(g, plot)) rejectIfOnContract(g, v)
+  for (const v of workers(g, plot)) rejectIfCommitted(g, v)
   if (housing(g) - plotHousing(p) < g.villagers.length) throw new Error('Not enough Housing for your Villagers')
   for (const [r, n] of Object.entries(demolishRefund(p))) g.stock[r as Res] += n
   for (const v of workers(g, plot)) v.activity = undefined
@@ -288,7 +393,7 @@ export const assign = action((g, id: number, plot: number, jobId: string) => {
   const p = g.plots[plot]!
   const job = jobsFor(p).find((j) => j.id === jobId)
   if (!job) throw new Error('Job not available')
-  rejectIfOnContract(g, v)
+  rejectIfCommitted(g, v)
   if (currentJob(v)?.plot !== plot && workers(g, plot).length >= slots(p)) throw new Error('No free slots')
   if (job.kind === 'contract' && job.cost) pay(g, job.cost)
   v.activity = { kind: 'job', plot, job: jobId, progress: 0 }
@@ -296,7 +401,7 @@ export const assign = action((g, id: number, plot: number, jobId: string) => {
 
 export const unassign = action((g, id: number) => {
   const v = villager(g, id)
-  rejectIfOnContract(g, v)
+  rejectIfCommitted(g, v)
   v.activity = undefined
 })
 

@@ -15,7 +15,7 @@ export const RES_NAME: Record<Res, string> = { gold: 'Gold', wood: 'Wood', stone
 export type BuildingType = 'townhall' | 'farm' | 'lumbercamp' | 'house' | 'tavern' | 'quarry' | 'mine' | 'guildhall'
 
 // Shared shape for Trait and Specialization effects. No `buildings` = applies everywhere.
-export interface Bonus { buildings?: BuildingType[]; speed?: number; xp?: number; gold?: number }
+export interface Bonus { buildings?: BuildingType[]; speed?: number; xp?: number; gold?: number; expedition?: number } // expedition: added success chance
 
 export interface JobDef {
   id: string
@@ -100,7 +100,7 @@ export const TRAITS: Record<TraitId, Bonus & { name: string; desc: string }> = {
   lumberjack: { name: 'Lumberjack', desc: '+50% speed at Lumber Camps', buildings: ['lumbercamp'], speed: 0.5 },
   stonehand: { name: 'Stonehand', desc: '+40% speed at Quarries and Mines', buildings: ['quarry', 'mine'], speed: 0.4 },
   silver_tongue: { name: 'Silver Tongue', desc: '+25% Gold from all Jobs', gold: 0.25 },
-  tireless: { name: 'Tireless', desc: '+15% speed everywhere', speed: 0.15 },
+  tireless: { name: 'Tireless', desc: '+15% speed everywhere, +5% Expedition success', speed: 0.15, expedition: 0.05 },
   quick_learner: { name: 'Quick Learner', desc: '+50% XP', xp: 0.5 },
 }
 export const TRAIT_IDS = Object.keys(TRAITS) as TraitId[]
@@ -112,7 +112,7 @@ export const SPECS: Record<SpecId, Bonus & { name: string; desc: string; req: Pa
   harvester: { name: 'Harvester', desc: '+100% speed at Farms', req: { end: 8 }, trait: 'green_thumb', buildings: ['farm'], speed: 1 },
   forester: { name: 'Forester', desc: '+100% speed at Lumber Camps', req: { str: 8 }, trait: 'lumberjack', buildings: ['lumbercamp'], speed: 1 },
   mason: { name: 'Mason', desc: '+100% speed at Quarries', req: { str: 8, end: 6 }, trait: 'stonehand', buildings: ['quarry'], speed: 1 },
-  prospector: { name: 'Prospector', desc: '+100% speed at Mines', req: { per: 8 }, buildings: ['mine'], speed: 1 },
+  prospector: { name: 'Prospector', desc: '+100% speed at Mines, +10% Expedition success', req: { per: 8 }, buildings: ['mine'], speed: 1, expedition: 0.1 },
   merchant: { name: 'Merchant', desc: '+50% Gold from all Jobs', req: { cha: 8 }, trait: 'silver_tongue', gold: 0.5 },
   scholar: { name: 'Scholar', desc: '+100% XP', req: { int: 8 }, trait: 'quick_learner', xp: 1 },
 }
@@ -129,6 +129,18 @@ export const SITE_COUNTS: Record<SiteKind, number> = { deposit: 5, ruin: 3, land
 export const SITE_REVEAL_DISTANCE = 3 // Sites this close start revealed; the rest are under fog
 export const SITE_NEAR_COUNT = 3 // how many Sites a new World Map places inside the revealed area
 export const SITE_MAX_DISTANCE = 10
+
+// Expeditions: a timed journey to a Site. Longer and riskier the farther it is.
+export const EXPEDITION_MAX_PARTY = 3
+export const EXPEDITION_SECONDS_PER_DISTANCE = 90
+export const EXPEDITION_FOOD_PER_MEMBER_DISTANCE = 4
+export const EXPEDITION_GOLD_PER_DISTANCE = 10
+export const EXPEDITION_XP_PER_DISTANCE = 12 // per party member, on success
+export const EXPEDITION_BASE_CHANCE = 0.85
+export const EXPEDITION_CHANCE_PER_DISTANCE = 0.07 // lost per step of distance
+export const EXPEDITION_CHANCE_PER_POINT = 0.01 // gained per point of Strength, Endurance or Perception in the party
+export const EXPEDITION_ATTRS: Attr[] = ['str', 'end', 'per']
+export const EXPEDITION_CHANCE_RANGE: [min: number, max: number] = [0.05, 0.95]
 
 export const NAMES = [
   'Ada', 'Bram', 'Cora', 'Dag', 'Edda', 'Finn', 'Greta', 'Hal', 'Ivy', 'Jory', 'Kaja', 'Leif', 'Mira', 'Nils',
