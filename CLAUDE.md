@@ -18,3 +18,7 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Task tracing
+
+After implementing a ticket (or when asked what was done), write an evidence-backed trace with the `trace-task` skill in `.claude/skills/trace-task/`. Reports go to `.ai/reports/` (gitignored by default). Other agents can follow its `SKILL.md` directly.
