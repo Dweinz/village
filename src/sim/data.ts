@@ -23,8 +23,8 @@ export type BuildingType = 'townhall' | 'farm' | 'lumbercamp' | 'house' | 'taver
 export type Workplace = BuildingType | 'outpost' | 'trade'
 
 // Shared shape for Trait and Specialization effects. No `workplaces` = applies everywhere.
-// expedition: added success chance; trade: added speed on Trade Routes only.
-export interface Bonus { workplaces?: Workplace[]; speed?: number; xp?: number; gold?: number; expedition?: number; trade?: number }
+// expedition: added success chance; trade: added speed on Trade Routes only; expeditionSpeed: added speed on Expeditions.
+export interface Bonus { workplaces?: Workplace[]; speed?: number; xp?: number; gold?: number; expedition?: number; trade?: number; expeditionSpeed?: number }
 
 export interface JobDef {
   id: string
@@ -198,6 +198,40 @@ export const REPUTATION_TIERS = [
   { name: 'Honored', reputation: 150, sellBonus: 0.6 },
 ] as const
 export const TRADE_JOB: JobDef = { id: 'trade', name: 'Trade Route', kind: 'production', minLevel: 1, duration: 30, attrs: { cha: 1 }, yields: {}, xp: 3 }
+
+// Renown: the player's town-wide XP. Each rank costs RENOWN_BASE × (rank + 1)^RENOWN_GROWTH and grants a Talent Point.
+export const RENOWN_BASE = 250
+export const RENOWN_GROWTH = 1.6
+// Flat Renown for world milestones, on top of the XP Villagers earn for them.
+export const RENOWN_PER_SITE_REVEALED = 50
+export const RENOWN_PER_RUIN_CLEARED = 150
+export const RENOWN_PER_REPUTATION_TIER = 100
+
+// Talent Tree: one web shared by all Settlements, grown out from its centre (ADR 0003). A Talent's bonus applies to
+// every Villager, and an `expedition` bonus once to each Party; Talent bonuses add together, then multiply with Traits
+// and Specializations.
+// chapter: the Chapter index the player must reach to take it (for Talents about features that open later).
+export type TalentKind = 'minor' | 'notable' | 'keystone'
+export type TalentRegion = 'wayfinding' | 'industry' | 'stewardship'
+export interface TalentDef extends Bonus { name: string; desc: string; kind: TalentKind; region: TalentRegion; chapter: number }
+export const WORLD_MAP_CHAPTER = 4 // completing Beyond the Walls opens the World Map, and with it Outposts and Trade Routes
+export const TALENTS = {
+  diligence: { name: 'Diligence', desc: '+5% speed everywhere', kind: 'minor', region: 'industry', chapter: 0, speed: 0.05 },
+  green_fields: { name: 'Green Fields', desc: '+10% speed at Farms and Lumber Camps', kind: 'minor', region: 'industry', chapter: 0, workplaces: ['farm', 'lumbercamp'], speed: 0.1 },
+  quick_study: { name: 'Quick Study', desc: '+10% XP', kind: 'minor', region: 'industry', chapter: 0, xp: 0.1 },
+  trailcraft: { name: 'Trailcraft', desc: 'Expeditions travel 10% faster', kind: 'minor', region: 'wayfinding', chapter: 0, expeditionSpeed: 0.1 },
+  sure_footed: { name: 'Sure-Footed', desc: '+5% Expedition success', kind: 'minor', region: 'wayfinding', chapter: 0, expedition: 0.05 },
+  prospecting: { name: 'Prospecting', desc: '+20% speed at Outposts', kind: 'notable', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, workplaces: ['outpost'], speed: 0.2 },
+  coin_sense: { name: 'Coin Sense', desc: '+10% Gold from all Jobs', kind: 'minor', region: 'stewardship', chapter: 0, gold: 0.1 },
+  haggling: { name: 'Haggling', desc: '+15% speed on Trade Routes', kind: 'minor', region: 'stewardship', chapter: WORLD_MAP_CHAPTER, trade: 0.15 },
+} satisfies Record<string, TalentDef>
+export type TalentId = keyof typeof TALENTS
+// The web's paths, both ways. 'centre' is where every build starts: it isn't a Talent and is never taken.
+export const TALENT_LINKS: ['centre' | TalentId, TalentId][] = [
+  ['centre', 'diligence'], ['diligence', 'green_fields'], ['diligence', 'quick_study'],
+  ['centre', 'trailcraft'], ['trailcraft', 'sure_footed'], ['trailcraft', 'prospecting'],
+  ['centre', 'coin_sense'], ['coin_sense', 'haggling'],
+]
 
 export const NAMES = [
   'Ada', 'Bram', 'Cora', 'Dag', 'Edda', 'Finn', 'Greta', 'Hal', 'Ivy', 'Jory', 'Kaja', 'Leif', 'Mira', 'Nils',

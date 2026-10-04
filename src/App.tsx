@@ -51,6 +51,7 @@ function describe(e: GameEvent) {
     case 'traded': return `🐪 ${e.name} traded at ${e.city}`
     case 'reputationTier': return `🤝 Reputation with ${e.city} rose to ${REPUTATION_TIERS[e.tier].name}`
     case 'siteRevealed': return `🌫️ ${e.party.join(', ')} found a ${SITE_KINDS[e.site].name} at distance ${e.distance}`
+    case 'renownRank': return `👑 Renown rank ${e.rank}: you earned a Talent Point`
   }
 }
 

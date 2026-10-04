@@ -29,6 +29,7 @@ export const MIGRATIONS: Migration[] = [
     ...game,
     plots: game.plots.map((p: { type: string } | null, i: number) => (p && ((i === 1 && p.type === 'farm') || (i === 2 && p.type === 'lumbercamp')) ? { ...p, free: true } : p)),
   }),
+  (game) => ({ ...game, renown: 0, renownRank: 0, talentPoints: 0, talents: [] }), // v8 → v9: Renown and the Talent Tree, from nothing
 ]
 
 export const SAVE_VERSION = MIGRATIONS.length + 1

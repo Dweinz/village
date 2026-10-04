@@ -137,3 +137,8 @@ test('a save that a migration cannot handle loads as nothing instead of crashing
   const strict = (g: Game) => { if (!g.villagers) throw new Error('bad shape'); return g }
   expect(fromSave(JSON.stringify({ savedAt: 0, game: { stock: {} } }), [strict])).toBeNull()
 })
+
+test('an old save starts at Renown 0, with no Talent Points and no Talents', () => {
+  const g = fromSave(v1Text)!.game
+  expect([g.renown, g.renownRank, g.talentPoints, g.talents]).toEqual([0, 0, 0, []])
+})

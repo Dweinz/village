@@ -3,8 +3,8 @@ import {
   ATTRS, BUILDINGS, EXPEDITION_ATTRS, EXPEDITION_BASE_CHANCE, EXPEDITION_CHANCE_PER_DISTANCE, EXPEDITION_CHANCE_PER_POINT,
   EXPEDITION_CHANCE_RANGE, EXPEDITION_FOOD_PER_MEMBER_DISTANCE, EXPEDITION_GOLD_PER_DISTANCE, EXPEDITION_MAX_PARTY,
   EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, INJURY_CHANCE, INJURY_SECONDS, MAX_BUILDING_LEVEL, NAMES, OUTPOST_COST, OUTPOST_JOB, OUTPOST_SLOTS, OUTPOST_YIELD, RES_NAME,
-  FOREIGN_CITIES, REPUTATION_PER_CYCLE, REPUTATION_TIERS, RUIN_BASE_CHANCE, RUIN_INJURY_CHANCE, RUIN_LEVEL_BASE, RUIN_MAX_CHANCE, RUIN_REWARD_PER_DISTANCE, RUIN_XP_PER_DISTANCE, RARE_MATERIALS, SITE_REVEAL_DISTANCE, SPECS, isRare, SPEC_LEVEL, TRADE_JOB, TRAITS,
-  TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type ForeignCityDef, type JobDef, type Res, type SpecId, type TraitId, type Workplace,
+  FOREIGN_CITIES, RENOWN_BASE, RENOWN_GROWTH, RENOWN_PER_REPUTATION_TIER, RENOWN_PER_RUIN_CLEARED, RENOWN_PER_SITE_REVEALED, REPUTATION_PER_CYCLE, REPUTATION_TIERS, RUIN_BASE_CHANCE, RUIN_INJURY_CHANCE, RUIN_LEVEL_BASE, RUIN_MAX_CHANCE, RUIN_REWARD_PER_DISTANCE, RUIN_XP_PER_DISTANCE, RARE_MATERIALS, SITE_REVEAL_DISTANCE, SPECS, isRare, SPEC_LEVEL, TALENT_LINKS, TALENTS, TRADE_JOB, TRAITS, WORLD_MAP_CHAPTER,
+  TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type ForeignCityDef, type JobDef, type Res, type SpecId, type TalentDef, type TalentId, type TraitId, type Workplace,
 } from './data'
 import { mulberry32 } from './random'
 import { generateWorldMap, withMaterials, withReputation, type Site } from './world'
@@ -60,6 +60,10 @@ export interface Game {
   nextId: number
   worldMap: Site[]
   expeditions: Expedition[]
+  renown: number // progress toward the next Renown rank
+  renownRank: number
+  talentPoints: number // unspent
+  talents: TalentId[] // taken, in the order taken
 }
 
 export type GameEvent =
@@ -76,6 +80,7 @@ export type GameEvent =
   | { kind: 'reputationTier'; city: string; tier: number } // a Foreign City's Reputation reached a new tier
   | { kind: 'injured'; name: string }
   | { kind: 'recovered'; name: string }
+  | { kind: 'renownRank'; rank: number } // also granted a Talent Point
 
 export const UPKEEP = 0.08 // Food per Villager per second
 export const MAX_LEVEL = 30
@@ -152,7 +157,7 @@ export const CHAPTERS: { name: string; objectives: Objective[] }[] = [
   },
 ]
 
-export const WORLD_MAP_CHAPTER = 4 // completing Beyond the Walls opens the World Map
+export { WORLD_MAP_CHAPTER }
 export const worldMapUnlocked = (g: Game) => g.chapter >= WORLD_MAP_CHAPTER
 
 // --- Helpers ----------------------------------------------------------------
@@ -184,6 +189,8 @@ export const workers = (g: Game, plot: number) => g.villagers.filter((v) => curr
 export const jobsFor = (p: NonNullable<Plot>) => BUILDINGS[p.type].jobs.filter((j) => j.minLevel <= p.level)
 export const findJob = (type: BuildingType, id: string) => BUILDINGS[type].jobs.find((j) => j.id === id)!
 export const xpToNext = (level: number) => Math.round(10 * level ** 1.6)
+/** Renown needed to climb from `rank` to the next one. */
+export const renownToNext = (rank: number) => Math.round(RENOWN_BASE * (rank + 1) ** RENOWN_GROWTH)
 export const hireCost = (g: Game) => Math.round(50 * 1.5 ** Math.max(0, g.villagers.length - 3))
 /** What it costs to raise a Building from `level` (0 = building it) to the next; the last upgrade also costs Rare Materials. */
 export const buildCost = (type: BuildingType, level: number): Bag => ({
@@ -205,12 +212,17 @@ export const maxLevel = (g: Game, type: BuildingType) => (type === 'townhall' ? 
 export const canAfford = (g: Game, bag: Bag) => Object.entries(bag).every(([r, n]) => g.stock[r as Res] >= n)
 
 const bonuses = (v: Villager): Bonus[] => [...v.traits.map((t) => TRAITS[t]), ...(v.spec ? [SPECS[v.spec]] : [])]
-const applies = (b: Bonus, type: Workplace) => !b.workplaces || b.workplaces.includes(type)
-const mult = (v: Villager, type: Workplace, key: 'xp' | 'gold') =>
-  bonuses(v).reduce((m, b) => (applies(b, type) ? m * (1 + (b[key] ?? 0)) : m), 1)
+// No workplace: only bonuses that apply everywhere (for what happens outside a Workplace, like Expeditions).
+const applies = (b: Bonus, type?: Workplace) => !b.workplaces || (!!type && b.workplaces.includes(type))
+/** The taken Talents' bonus of one kind, added together (ADR 0003). */
+const talentBonus = (g: Game, key: Exclude<keyof Bonus, 'workplaces'>, type?: Workplace) =>
+  g.talents.reduce((n, id) => { const t: TalentDef = TALENTS[id]; return applies(t, type) ? n + (t[key] ?? 0) : n }, 0)
+const mult = (g: Game, v: Villager, type: Workplace, key: 'xp' | 'gold') =>
+  bonuses(v).reduce((m, b) => (applies(b, type) ? m * (1 + (b[key] ?? 0)) : m), 1 + talentBonus(g, key, type))
 
 export function speed(g: Game, v: Villager, type: Workplace, job: JobDef) {
   let s = 1 + 0.04 * Object.entries(job.attrs).reduce((n, [a, w]) => n + v.attrs[a as Attr] * w, 0)
+  s *= 1 + talentBonus(g, 'speed', type) + (type === 'trade' ? talentBonus(g, 'trade', type) : 0)
   for (const b of bonuses(v)) {
     if (applies(b, type)) s *= 1 + (b.speed ?? 0)
     if (type === 'trade') s *= 1 + (b.trade ?? 0)
@@ -227,7 +239,7 @@ export function canSpecialize(g: Game, v: Villager, id: SpecId) {
 const villager = (g: Game, id: number) => g.villagers.find((v) => v.id === id)!
 export const siteById = (g: Game, id: number) => g.worldMap.find((s) => s.id === id)!
 // XP bonuses that apply everywhere (e.g. Quick Learner, Scholar), for XP earned outside a Building.
-const xpMult = (v: Villager) => bonuses(v).reduce((m, b) => (b.workplaces ? m : m * (1 + (b.xp ?? 0))), 1)
+const xpMult = (g: Game, v: Villager) => bonuses(v).reduce((m, b) => (b.workplaces ? m : m * (1 + (b.xp ?? 0))), 1 + talentBonus(g, 'xp'))
 
 /** What a Villager is doing, in words for the player. */
 export function activityName(g: Game, v: Villager) {
@@ -261,7 +273,18 @@ function pay(g: Game, bag: Bag) {
   for (const [r, n] of Object.entries(bag)) g.stock[r as Res] -= n
 }
 
-function addXp(v: Villager, xp: number, ev: GameEvent[]) {
+function addRenown(g: Game, renown: number, ev: GameEvent[]) {
+  g.renown += renown
+  while (g.renown >= renownToNext(g.renownRank)) {
+    g.renown -= renownToNext(g.renownRank)
+    g.renownRank++
+    g.talentPoints++
+    ev.push({ kind: 'renownRank', rank: g.renownRank })
+  }
+}
+
+function addXp(g: Game, v: Villager, xp: number, ev: GameEvent[]) {
+  addRenown(g, xp, ev)
   v.xp += xp
   while (v.level < MAX_LEVEL && v.xp >= xpToNext(v.level)) {
     v.xp -= xpToNext(v.level)
@@ -279,6 +302,7 @@ export function newGame(seed = Date.now()): Game {
     time: 0, seed, stock: { gold: 30, wood: 20, stone: 0, food: 30, ore: 0, crystal: 0, spice: 0, silk: 0 },
     plots: Array(PLOT_COUNT).fill(null), villagers: [], recruits: [], tavernRefreshAt: 0,
     chapter: 0, done: [], starving: false, nextId: 1, worldMap: withReputation(withMaterials(generateWorldMap(seed))), expeditions: [],
+    renown: 0, renownRank: 0, talentPoints: 0, talents: [],
   }
   g.plots[0] = { type: 'townhall', level: 1 }
   g.plots[1] = { type: 'farm', level: 1, free: true }
@@ -315,9 +339,9 @@ function step(g: Game, s: number, ev: GameEvent[]) {
       v.activity = undefined
       ev.push({ kind: 'contract', name: v.name, job: job.name })
     }
-    const goldMult = mult(v, type, 'gold')
+    const goldMult = mult(g, v, type, 'gold')
     for (const [r, n] of Object.entries(job.yields)) g.stock[r as Res] += r === 'gold' ? n * goldMult : n
-    addXp(v, job.xp * mult(v, type, 'xp'), ev)
+    addXp(g, v, job.xp * mult(g, v, type, 'xp'), ev)
   }
 
   for (const v of g.villagers) {
@@ -328,7 +352,7 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     work.progress = 0
     const site = siteById(g, work.site)
     g.stock[site.material!] += OUTPOST_YIELD * site.outpost!.level
-    addXp(v, OUTPOST_JOB.xp * mult(v, 'outpost', 'xp'), ev)
+    addXp(g, v, OUTPOST_JOB.xp * mult(g, v, 'outpost', 'xp'), ev)
   }
 
   for (const v of g.villagers) {
@@ -343,11 +367,14 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     pay(g, gave)
     g.stock[route.get] += got[route.get]!
     route.progress = 0
-    addXp(v, TRADE_JOB.xp * mult(v, 'trade', 'xp'), ev)
+    addXp(g, v, TRADE_JOB.xp * mult(g, v, 'trade', 'xp'), ev)
     ev.push({ kind: 'traded', name: v.name, city: city.name, gave, got })
     const site = siteById(g, route.site)
     site.reputation = (site.reputation ?? 0) + REPUTATION_PER_CYCLE
-    for (let tier = city.tier + 1; tier <= reputationTier(site.reputation); tier++) ev.push({ kind: 'reputationTier', city: city.name, tier })
+    for (let tier = city.tier + 1; tier <= reputationTier(site.reputation); tier++) {
+      ev.push({ kind: 'reputationTier', city: city.name, tier })
+      addRenown(g, RENOWN_PER_REPUTATION_TIER, ev)
+    }
   }
 
   for (const v of g.villagers) {
@@ -369,15 +396,17 @@ function step(g: Game, s: number, ev: GameEvent[]) {
         const reward = ruinReward(site)
         for (const [r, n] of Object.entries(reward)) g.stock[r as Res] += n
         ev.push({ kind: 'ruinCleared', party: names, reward })
+        addRenown(g, RENOWN_PER_RUIN_CLEARED, ev)
       } else if (x.goal === 'reach') {
         site.discovery = 'reached'
         ev.push({ kind: 'expeditionSucceeded', party: names, goal: x.goal, site: site.kind })
       } else {
         site.discovery = 'revealed'
         ev.push({ kind: 'siteRevealed', party: names, id: site.id, site: site.kind, distance: site.distance })
+        addRenown(g, RENOWN_PER_SITE_REVEALED, ev)
       }
       const xp = x.goal === 'ruin' ? ruinXp(site) : EXPEDITION_XP_PER_DISTANCE * site.distance
-      for (const v of party) addXp(v, xp * xpMult(v), ev)
+      for (const v of party) addXp(g, v, xp * xpMult(g, v), ev)
     } else {
       ev.push({ kind: 'expeditionFailed', party: names })
       for (const v of party) {
@@ -398,6 +427,7 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     for (const o of ch.objectives) if (!g.done.includes(o.id) && o.check(g)) g.done.push(o.id)
     if (ch.objectives.every((o) => g.done.includes(o.id))) {
       g.chapter++
+      g.talentPoints++ // a bonus Talent Point per Chapter
       ev.push({ kind: 'chapter', chapter: g.chapter })
       if (g.chapter === WORLD_MAP_CHAPTER) ev.push({ kind: 'worldMap' })
     }
@@ -463,12 +493,12 @@ export function planExpedition(g: Game, party: number[], target: ExpeditionTarge
   const points = members.reduce((n, v) => n + EXPEDITION_ATTRS.reduce((m, a) => m + v.attrs[a], 0), 0)
   const [lo, max] = EXPEDITION_CHANCE_RANGE
   const hi = target.kind === 'ruin' ? RUIN_MAX_CHANCE : max
-  const bonus = members.reduce((n, v) => n + bonuses(v).reduce((m, b) => m + (b.expedition ?? 0), 0), 0)
+  const bonus = members.reduce((n, v) => n + bonuses(v).reduce((m, b) => m + (b.expedition ?? 0), 0), talentBonus(g, 'expedition'))
   const base = target.kind === 'ruin' ? RUIN_BASE_CHANCE : EXPEDITION_BASE_CHANCE
   const raw = base - EXPEDITION_CHANCE_PER_DISTANCE * site.distance + EXPEDITION_CHANCE_PER_POINT * points + bonus
   return {
     site,
-    duration: EXPEDITION_SECONDS_PER_DISTANCE * site.distance,
+    duration: EXPEDITION_SECONDS_PER_DISTANCE * site.distance / (1 + talentBonus(g, 'expeditionSpeed')),
     cost: { food: EXPEDITION_FOOD_PER_MEMBER_DISTANCE * site.distance * party.length, gold: EXPEDITION_GOLD_PER_DISTANCE * site.distance },
     chance: Math.min(hi, Math.max(lo, raw)),
   }
@@ -662,4 +692,21 @@ export const specialize = action((g, id: number, spec: SpecId) => {
   const v = villager(g, id)
   if (!canSpecialize(g, v, spec)) throw new Error(`${v.name} can't become a ${SPECS[spec].name}`)
   v.spec = spec
+})
+
+/** Why a Talent can't be taken right now, or undefined if it can. */
+export function talentBlocker(g: Game, id: TalentId): string | undefined {
+  const t: TalentDef = TALENTS[id]
+  if (g.talents.includes(id)) return `You already have ${t.name}`
+  if (g.chapter < t.chapter) return `${t.name} requires Chapter ${t.chapter + 1}`
+  const linked = TALENT_LINKS.some(([a, b]) => (b === id && (a === 'centre' || g.talents.includes(a))) || (a === id && g.talents.includes(b)))
+  if (!linked) return `${t.name} doesn't connect to a Talent you have`
+  if (g.talentPoints < 1) return 'No Talent Points to spend'
+}
+
+export const takeTalent = action((g, id: TalentId) => {
+  const reason = talentBlocker(g, id)
+  if (reason) throw new Error(reason)
+  g.talentPoints--
+  g.talents.push(id)
 })
