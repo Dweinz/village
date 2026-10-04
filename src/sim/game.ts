@@ -2,9 +2,9 @@
 import {
   ATTRS, BUILDINGS, EXPEDITION_ATTRS, EXPEDITION_BASE_CHANCE, EXPEDITION_CHANCE_PER_DISTANCE, EXPEDITION_CHANCE_PER_POINT,
   EXPEDITION_CHANCE_RANGE, EXPEDITION_FOOD_PER_MEMBER_DISTANCE, EXPEDITION_GOLD_PER_DISTANCE, EXPEDITION_MAX_PARTY,
-  EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, INJURY_CHANCE, INJURY_SECONDS, MAX_BUILDING_LEVEL, NAMES, OUTPOST_COST, OUTPOST_JOB, OUTPOST_SLOTS, OUTPOST_YIELD, RES_NAME,
+  EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, INJURY_CHANCE, INJURY_SECONDS, MAX_BUILDING_LEVEL, RECRUIT_POOL, NAMES, OUTPOST_COST, OUTPOST_JOB, OUTPOST_SLOTS, OUTPOST_YIELD, RES_NAME,
   FOREIGN_CITIES, RENOWN_BASE, RENOWN_GROWTH, RENOWN_PER_REPUTATION_TIER, RENOWN_PER_RUIN_CLEARED, RENOWN_PER_SITE_REVEALED, REPUTATION_PER_CYCLE, REPUTATION_TIERS, RUIN_BASE_CHANCE, RUIN_INJURY_CHANCE, RUIN_LEVEL_BASE, RUIN_MAX_CHANCE, RUIN_REWARD_PER_DISTANCE, RUIN_XP_PER_DISTANCE, RARE_MATERIALS, SITE_REVEAL_DISTANCE, SPECS, isRare, SPEC_LEVEL, TALENT_LINKS, TALENTS, TRADE_JOB, TRAITS, WORLD_MAP_CHAPTER,
-  TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type ForeignCityDef, type JobDef, type Res, type SpecId, type TalentDef, type TalentId, type TraitId, type Workplace,
+  TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type ForeignCityDef, type JobDef, type Res, type SpecId, type TalentBonus, type TalentDef, type TalentId, type TraitId, type Workplace,
 } from './data'
 import { mulberry32 } from './random'
 import { generateWorldMap, withMaterials, withReputation, type Site } from './world'
@@ -44,7 +44,8 @@ export interface Expedition {
   chance: number // fixed when the party sets out, as shown in the preview
 }
 
-export type Plot = { type: BuildingType; level: number; free?: true } | null // free: placed by newGame, its level-1 cost never paid
+// paid: the Gold and Materials spent on it so far (Rare Materials aren't refunded, so aren't kept), for Demolish refunds.
+export type Plot = { type: BuildingType; level: number; paid: Bag } | null
 
 export interface Game {
   time: number
@@ -85,6 +86,8 @@ export type GameEvent =
 export const UPKEEP = 0.08 // Food per Villager per second
 export const MAX_LEVEL = 30
 export const OFFLINE_CAP = 8 * 3600
+/** The most time away that Offline Progress settles, raised by Talents. */
+export const offlineCap = (g: Game) => OFFLINE_CAP + talentBonus(g, 'offlineCap')
 export const TAVERN_REFRESH = 300
 export const REROLL_COST = 20
 export const PLOT_COUNT = 9
@@ -168,10 +171,11 @@ function rand(g: Game) { // the seed lives in state so the sim stays determinist
   return value
 }
 const pick = <T,>(g: Game, arr: readonly T[]) => arr[Math.floor(rand(g) * arr.length)]
+const recruitPool = (g: Game) => Array.from({ length: RECRUIT_POOL + talentBonus(g, 'recruits') }, () => makeVillager(g))
 
 function makeVillager(g: Game): Villager {
   const attrs = Object.fromEntries(ATTRS.map((a) => [a, 1 + Math.floor(rand(g) * 5)])) as Record<Attr, number>
-  const roll = rand(g)
+  const roll = rand(g) - talentBonus(g, 'traitChance') // a Trait chance Talent makes one, and two, more likely
   const traits: TraitId[] = []
   while (traits.length < (roll < 0.1 ? 2 : roll < 0.4 ? 1 : 0)) {
     const t = pick(g, TRAIT_IDS)
@@ -181,7 +185,7 @@ function makeVillager(g: Game): Villager {
 }
 
 export const plotHousing = (p: NonNullable<Plot>) => (BUILDINGS[p.type].housing ?? 0) * p.level
-export const housing = (g: Game) => g.plots.reduce((n, p) => n + (p ? plotHousing(p) : 0), 0)
+export const housing = (g: Game) => g.plots.reduce((n, p) => n + (p ? plotHousing(p) : 0), talentBonus(g, 'housing'))
 export const slots = (p: NonNullable<Plot>) => BUILDINGS[p.type].slots * p.level
 export const currentJob = (v: Villager) => (v.activity?.kind === 'job' ? v.activity : undefined)
 export const jobOf = (g: Game, v: Villager) => { const work = currentJob(v); return work && findJob(g.plots[work.plot]!.type, work.job) }
@@ -191,22 +195,22 @@ export const findJob = (type: BuildingType, id: string) => BUILDINGS[type].jobs.
 export const xpToNext = (level: number) => Math.round(10 * level ** 1.6)
 /** Renown needed to climb from `rank` to the next one. */
 export const renownToNext = (rank: number) => Math.round(RENOWN_BASE * (rank + 1) ** RENOWN_GROWTH)
-export const hireCost = (g: Game) => Math.round(50 * 1.5 ** Math.max(0, g.villagers.length - 3))
-/** What it costs to raise a Building from `level` (0 = building it) to the next; the last upgrade also costs Rare Materials. */
-export const buildCost = (type: BuildingType, level: number): Bag => ({
-  ...Object.fromEntries(Object.entries(BUILDINGS[type].cost).map(([r, n]) => [r, Math.round(n * UPGRADE_SCALE ** level)])),
+export const hireCost = (g: Game) => Math.round(50 * 1.5 ** Math.max(0, g.villagers.length - 3) * discount(g, 'hireCost'))
+/**
+ * What it costs to raise a Building from `level` (0 = building it) to the next, after building cost Talents; the last
+ * upgrade also costs Rare Materials, which no Talent makes cheaper.
+ */
+export const buildCost = (g: Game, type: BuildingType, level: number): Bag => ({
+  ...Object.fromEntries(Object.entries(BUILDINGS[type].cost).map(([r, n]) => [r, Math.round(n * UPGRADE_SCALE ** level * discount(g, 'buildCost'))])),
   ...(level + 1 === MAX_BUILDING_LEVEL ? BUILDINGS[type].rareUpgrade : {}),
 })
-/**
- * Half of everything paid for a Building (its level-1 cost, unless it came free, and every upgrade), rounded down.
- * Rare Materials are not given back. Empty when nothing was paid.
- */
-export function demolishRefund(p: NonNullable<Plot>): Bag {
-  const refund: Bag = {}
-  for (let level = p.free ? 1 : 0; level < p.level; level++) {
-    for (const [r, n] of Object.entries(buildCost(p.type, level))) if (!isRare(r as Res)) refund[r as Res] = (refund[r as Res] ?? 0) + n
-  }
-  return Object.fromEntries(Object.entries(refund).map(([r, n]) => [r, Math.floor(n / 2)] as const).filter(([, n]) => n > 0))
+/** Half of the Gold and Materials paid for a Building (nothing for the starting Buildings' level 1), rounded down. Empty when nothing was paid. */
+export const demolishRefund = (p: NonNullable<Plot>): Bag =>
+  Object.fromEntries(Object.entries(p.paid).map(([r, n]) => [r, Math.floor(n / 2)] as const).filter(([, n]) => n > 0))
+// Pays for building or upgrading a Plot, and remembers what was paid.
+function payForPlot(g: Game, p: NonNullable<Plot>, cost: Bag) {
+  pay(g, cost)
+  for (const [r, n] of Object.entries(cost)) if (!isRare(r as Res)) p.paid[r as Res] = (p.paid[r as Res] ?? 0) + n
 }
 export const maxLevel = (g: Game, type: BuildingType) => (type === 'townhall' ? MAX_BUILDING_LEVEL : g.plots[0]!.level)
 export const canAfford = (g: Game, bag: Bag) => Object.entries(bag).every(([r, n]) => g.stock[r as Res] >= n)
@@ -215,8 +219,11 @@ const bonuses = (v: Villager): Bonus[] => [...v.traits.map((t) => TRAITS[t]), ..
 // No workplace: only bonuses that apply everywhere (for what happens outside a Workplace, like Expeditions).
 const applies = (b: Bonus, type?: Workplace) => !b.workplaces || (!!type && b.workplaces.includes(type))
 /** The taken Talents' bonus of one kind, added together (ADR 0003). */
-const talentBonus = (g: Game, key: Exclude<keyof Bonus, 'workplaces'>, type?: Workplace) =>
-  g.talents.reduce((n, id) => { const t: TalentDef = TALENTS[id]; return applies(t, type) ? n + (t[key] ?? 0) : n }, 0)
+function talentBonus(g: Game, key: Exclude<keyof TalentBonus, 'workplaces'>, type?: Workplace) {
+  return g.talents.reduce((n, id) => { const t: TalentDef = TALENTS[id]; return applies(t, type) ? n + (t[key] ?? 0) : n }, 0)
+}
+/** What's left of a cost or chance after the Talents that take a share off it. */
+const discount = (g: Game, key: 'expeditionCost' | 'injuryChance' | 'injuryTime' | 'upkeep' | 'buildCost' | 'hireCost') => Math.max(0, 1 - talentBonus(g, key))
 const mult = (g: Game, v: Villager, type: Workplace, key: 'xp' | 'gold') =>
   bonuses(v).reduce((m, b) => (applies(b, type) ? m * (1 + (b[key] ?? 0)) : m), 1 + talentBonus(g, key, type))
 
@@ -304,9 +311,9 @@ export function newGame(seed = Date.now()): Game {
     chapter: 0, done: [], starving: false, nextId: 1, worldMap: withReputation(withMaterials(generateWorldMap(seed))), expeditions: [],
     renown: 0, renownRank: 0, talentPoints: 0, talents: [],
   }
-  g.plots[0] = { type: 'townhall', level: 1 }
-  g.plots[1] = { type: 'farm', level: 1, free: true }
-  g.plots[2] = { type: 'lumbercamp', level: 1, free: true }
+  g.plots[0] = { type: 'townhall', level: 1, paid: {} }
+  g.plots[1] = { type: 'farm', level: 1, paid: {} } // the starting Buildings come free
+  g.plots[2] = { type: 'lumbercamp', level: 1, paid: {} }
   for (let i = 0; i < 3; i++) g.villagers.push(makeVillager(g))
   return g
 }
@@ -314,7 +321,7 @@ export function newGame(seed = Date.now()): Game {
 function step(g: Game, s: number, ev: GameEvent[]) {
   g.time += s
 
-  const upkeep = g.villagers.length * UPKEEP * s
+  const upkeep = g.villagers.length * UPKEEP * discount(g, 'upkeep') * s
   if (g.stock.food >= upkeep) {
     g.stock.food -= upkeep
     g.starving = false
@@ -340,7 +347,8 @@ function step(g: Game, s: number, ev: GameEvent[]) {
       ev.push({ kind: 'contract', name: v.name, job: job.name })
     }
     const goldMult = mult(g, v, type, 'gold')
-    for (const [r, n] of Object.entries(job.yields)) g.stock[r as Res] += r === 'gold' ? n * goldMult : n
+    const yieldMult = 1 + talentBonus(g, 'yield', type)
+    for (const [r, n] of Object.entries(job.yields)) g.stock[r as Res] += n * (r === 'gold' ? goldMult : yieldMult)
     addXp(g, v, job.xp * mult(g, v, type, 'xp'), ev)
   }
 
@@ -351,7 +359,7 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     if (work.progress < OUTPOST_JOB.duration) continue
     work.progress = 0
     const site = siteById(g, work.site)
-    g.stock[site.material!] += OUTPOST_YIELD * site.outpost!.level
+    g.stock[site.material!] += OUTPOST_YIELD * site.outpost!.level * (1 + talentBonus(g, 'rareYield'))
     addXp(g, v, OUTPOST_JOB.xp * mult(g, v, 'outpost', 'xp'), ev)
   }
 
@@ -370,7 +378,7 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     addXp(g, v, TRADE_JOB.xp * mult(g, v, 'trade', 'xp'), ev)
     ev.push({ kind: 'traded', name: v.name, city: city.name, gave, got })
     const site = siteById(g, route.site)
-    site.reputation = (site.reputation ?? 0) + REPUTATION_PER_CYCLE
+    site.reputation = (site.reputation ?? 0) + REPUTATION_PER_CYCLE * (1 + talentBonus(g, 'reputation'))
     for (let tier = city.tier + 1; tier <= reputationTier(site.reputation); tier++) {
       ev.push({ kind: 'reputationTier', city: city.name, tier })
       addRenown(g, RENOWN_PER_REPUTATION_TIER, ev)
@@ -393,7 +401,7 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     if (rand(g) < x.chance) {
       if (x.goal === 'ruin') {
         site.cleared = true
-        const reward = ruinReward(site)
+        const reward = ruinReward(g, site)
         for (const [r, n] of Object.entries(reward)) g.stock[r as Res] += n
         ev.push({ kind: 'ruinCleared', party: names, reward })
         addRenown(g, RENOWN_PER_RUIN_CLEARED, ev)
@@ -410,15 +418,15 @@ function step(g: Game, s: number, ev: GameEvent[]) {
     } else {
       ev.push({ kind: 'expeditionFailed', party: names })
       for (const v of party) {
-        if (rand(g) >= (x.goal === 'ruin' ? RUIN_INJURY_CHANCE : INJURY_CHANCE)) continue
-        v.activity = { kind: 'injured', recoversAt: g.time + INJURY_SECONDS }
+        if (rand(g) >= injuryChance(g, x.goal)) continue
+        v.activity = { kind: 'injured', recoversAt: g.time + INJURY_SECONDS * discount(g, 'injuryTime') }
         ev.push({ kind: 'injured', name: v.name })
       }
     }
   }
 
   if (g.time >= g.tavernRefreshAt) {
-    g.recruits = [0, 1, 2].map(() => makeVillager(g))
+    g.recruits = recruitPool(g)
     g.tavernRefreshAt = g.time + TAVERN_REFRESH
   }
 
@@ -463,14 +471,19 @@ const nextToExplore = (g: Game) => g.worldMap
 export const ruinLevel = (site: Site) => RUIN_LEVEL_BASE + site.distance
 /** The XP each Party member earns for clearing this Ruin, before their own XP bonuses. */
 export const ruinXp = (site: Site) => RUIN_XP_PER_DISTANCE * site.distance
-/** What clearing this Ruin pays into the Stockpile. */
-export const ruinReward = (site: Site): Bag =>
-  Object.fromEntries(Object.entries(RUIN_REWARD_PER_DISTANCE).map(([r, n]) => [r, n * site.distance]))
+/** What clearing this Ruin pays into the Stockpile, Rare Materials raised by Talents. */
+export const ruinReward = (g: Game, site: Site): Bag => Object.fromEntries(Object.entries(RUIN_REWARD_PER_DISTANCE)
+  .map(([r, n]) => [r, n * site.distance * (isRare(r as Res) ? 1 + talentBonus(g, 'rareYield') : 1)]))
+
+/** How many Villagers a Party can hold. */
+export const maxParty = (g: Game) => EXPEDITION_MAX_PARTY + talentBonus(g, 'party')
+/** The chance that each member of a failed Expedition comes home Injured. */
+export const injuryChance = (g: Game, goal: Expedition['goal']) => (goal === 'ruin' ? RUIN_INJURY_CHANCE : INJURY_CHANCE) * discount(g, 'injuryChance')
 
 /** What an Expedition would take and risk. Throws a player-facing Error if the party or target is invalid. */
 export function planExpedition(g: Game, party: number[], target: ExpeditionTarget): ExpeditionPlan {
   if (party.length === 0) throw new Error('Choose at least one Villager')
-  if (party.length > EXPEDITION_MAX_PARTY || new Set(party).size < party.length) throw new Error(`A party is at most ${EXPEDITION_MAX_PARTY} Villagers`)
+  if (party.length > maxParty(g) || new Set(party).size < party.length) throw new Error(`A party is at most ${maxParty(g)} Villagers`)
   const site = target.kind === 'explore' ? nextToExplore(g) : g.worldMap.find((s) => s.id === target.site)
   if (!site) throw new Error(target.kind === 'explore' ? 'Nothing left to explore' : 'No such Site')
   if (target.kind === 'reach') {
@@ -499,7 +512,10 @@ export function planExpedition(g: Game, party: number[], target: ExpeditionTarge
   return {
     site,
     duration: EXPEDITION_SECONDS_PER_DISTANCE * site.distance / (1 + talentBonus(g, 'expeditionSpeed')),
-    cost: { food: EXPEDITION_FOOD_PER_MEMBER_DISTANCE * site.distance * party.length, gold: EXPEDITION_GOLD_PER_DISTANCE * site.distance },
+    cost: {
+      food: EXPEDITION_FOOD_PER_MEMBER_DISTANCE * site.distance * party.length * discount(g, 'expeditionCost'),
+      gold: EXPEDITION_GOLD_PER_DISTANCE * site.distance * discount(g, 'expeditionCost'),
+    },
     chance: Math.min(hi, Math.max(lo, raw)),
   }
 }
@@ -578,12 +594,18 @@ function ratesAt(def: ForeignCityDef, tier: number) {
   return { buys, sells }
 }
 
+// Trade rate Talents raise every load a city sells, on top of its Reputation Tier.
+function withTradeTalents(g: Game, rates: { buys: Bag; sells: Bag }) {
+  const more = 1 + talentBonus(g, 'tradeRate')
+  return { buys: rates.buys, sells: Object.fromEntries(Object.entries(rates.sells).map(([r, n]) => [r, n * more])) as Bag }
+}
+
 /** A Foreign City's name, Reputation and tier, and the rates it trades at now. */
 export function foreignCity(g: Game, siteId: number) {
   const def = cityDef(g, siteId)
   const reputation = siteById(g, siteId).reputation ?? 0
   const tier = reputationTier(reputation)
-  return { name: def.name, reputation, tier, ...ratesAt(def, tier) }
+  return { name: def.name, reputation, tier, ...withTradeTalents(g, ratesAt(def, tier)) }
 }
 /**
  * The Reputation Tier a Foreign City reaches next: the Reputation it needs, the rates it will trade at, and which
@@ -594,7 +616,7 @@ export function nextReputationTier(g: Game, siteId: number) {
   const tier = reputationTier(siteById(g, siteId).reputation ?? 0) + 1
   if (tier >= REPUTATION_TIERS.length) return undefined
   const { buys = {}, sells = {} } = def.unlocks[tier] ?? {}
-  return { tier, ...REPUTATION_TIERS[tier], ...ratesAt(def, tier), newBuys: Object.keys(buys) as Res[], newSells: Object.keys(sells) as Res[] }
+  return { tier, ...REPUTATION_TIERS[tier], ...withTradeTalents(g, ratesAt(def, tier)), newBuys: Object.keys(buys) as Res[], newSells: Object.keys(sells) as Res[] }
 }
 /** True while a Trade Route waits at the end of its cycle for the Stockpile to cover its load. */
 export function tradeStalled(g: Game, v: Villager) {
@@ -630,8 +652,9 @@ export const build = action((g, plot: number, type: BuildingType) => {
   if (g.plots[plot]) throw new Error('That plot is taken')
   if (def.chapter > g.chapter) throw new Error(`${def.name} is not unlocked yet`)
   if (def.unique && has(g, type)) throw new Error(`You can only have one ${def.name}`)
-  pay(g, buildCost(type, 0))
-  g.plots[plot] = { type, level: 1 }
+  const p = { type, level: 1, paid: {} }
+  payForPlot(g, p, buildCost(g, type, 0))
+  g.plots[plot] = p
 })
 
 export const demolish = action((g, plot: number) => {
@@ -648,7 +671,7 @@ export const demolish = action((g, plot: number) => {
 export const upgrade = action((g, plot: number) => {
   const p = g.plots[plot]!
   if (p.level >= maxLevel(g, p.type)) throw new Error(p.type === 'townhall' ? 'Already at max level' : 'Upgrade the Town Hall first')
-  pay(g, buildCost(p.type, p.level))
+  payForPlot(g, p, buildCost(g, p.type, p.level))
   p.level++
 })
 
@@ -677,7 +700,7 @@ export const hire = action((g, index: number) => {
 
 export const reroll = action((g) => {
   pay(g, { gold: REROLL_COST })
-  g.recruits = [0, 1, 2].map(() => makeVillager(g))
+  g.recruits = recruitPool(g)
   g.tavernRefreshAt = g.time + TAVERN_REFRESH
 })
 

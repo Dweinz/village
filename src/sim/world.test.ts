@@ -28,7 +28,7 @@ test('the World Map stays locked until the Beyond the Walls Chapter is complete,
   g.chapter = 3 // Founding, New Faces and Mastery done
   g.plots[0]!.level = 4 // Objective: Town Hall level 4
   g.stock.ore = 49
-  g.plots[3] = { type: 'mine', level: 1 } // Objective: build a Mine
+  g.plots[3] = { type: 'mine', level: 1, paid: {} } // Objective: build a Mine
   expect(CHAPTERS[3].name).toBe('Beyond the Walls')
   g = advance(g, 1)
   expect(worldMapUnlocked(g)).toBe(false) // still short of 50 Ore

@@ -63,7 +63,7 @@ const lost = raids.filter((r) => r.ev.some((e) => e.kind === 'expeditionFailed')
 test('clearing a Ruin pays its reward and lots of XP, marks it cleared and announces it; it cannot be raided again', () => {
   expect(won.length).toBeGreaterThan(5)
   for (const { before, after, ev, ruin } of won) {
-    const reward = ruinReward(ruin)
+    const reward = ruinReward(before, ruin)
     expect(reward.gold).toBeGreaterThan(0)
     expect(Object.keys(reward).some((r) => r === 'crystal' || r === 'spice' || r === 'silk')).toBe(true)
     const cost = planExpedition(before, [1, 2, 3], { kind: 'ruin', site: ruin.id }).cost

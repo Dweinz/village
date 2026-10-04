@@ -1,5 +1,6 @@
 // Save format. Pure: the caller supplies the wall-clock time and does the storage I/O (ADR 0001).
 import type { Game } from './game'
+import { BUILDINGS, UPGRADE_SCALE, isRare, type Bag, type BuildingType, type Res } from './data'
 import { generateWorldMap, withMaterials, withReputation } from './world'
 
 export interface Save { game: Game; savedAt: number }
@@ -30,7 +31,22 @@ export const MIGRATIONS: Migration[] = [
     plots: game.plots.map((p: { type: string } | null, i: number) => (p && ((i === 1 && p.type === 'farm') || (i === 2 && p.type === 'lumbercamp')) ? { ...p, free: true } : p)),
   }),
   (game) => ({ ...game, renown: 0, renownRank: 0, talentPoints: 0, talents: [] }), // v8 → v9: Renown and the Talent Tree, from nothing
+  (game) => ({ // v9 → v10: each Building remembers what was paid for it. Until now every level cost its list price, but a
+    // `free` level 1 cost nothing, nor did the Town Hall's (Plot 0, placed by newGame like the starting Farm and Lumber Camp).
+    ...game,
+    plots: game.plots.map((p: { type: BuildingType; level: number; free?: true } | null, i: number) =>
+      p && { type: p.type, level: p.level, paid: listPricePaid(p.type, p.level, !!p.free || i === 0) }),
+  }),
 ]
+
+// The Gold and Materials paid for a Building before any Talent changed its costs (v9 → v10).
+function listPricePaid(type: BuildingType, level: number, free: boolean) {
+  const paid: Bag = {}
+  for (let l = free ? 1 : 0; l < level; l++) {
+    for (const [r, n] of Object.entries(BUILDINGS[type].cost)) if (!isRare(r as Res)) paid[r as Res] = (paid[r as Res] ?? 0) + Math.round(n * UPGRADE_SCALE ** l)
+  }
+  return paid
+}
 
 export const SAVE_VERSION = MIGRATIONS.length + 1
 

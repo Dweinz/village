@@ -117,6 +117,8 @@ export const TRAITS: Record<TraitId, Bonus & { name: string; desc: string }> = {
 }
 export const TRAIT_IDS = Object.keys(TRAITS) as TraitId[]
 
+export const RECRUIT_POOL = 3 // Recruits in the Tavern at a time
+
 export const SPEC_LEVEL = 10
 export type SpecId = 'harvester' | 'forester' | 'mason' | 'prospector' | 'merchant' | 'scholar'
 // Requirement: all `req` Attributes met, OR the Villager has `trait` (hidden path).
@@ -211,27 +213,130 @@ export const RENOWN_PER_REPUTATION_TIER = 100
 // every Villager, and an `expedition` bonus once to each Party; Talent bonuses add together, then multiply with Traits
 // and Specializations.
 // chapter: the Chapter index the player must reach to take it (for Talents about features that open later).
+// at: [depth, lane] within its region: depth counts out from the centre, lane runs across the region (see webPosition).
 export type TalentKind = 'minor' | 'notable' | 'keystone'
 export type TalentRegion = 'wayfinding' | 'industry' | 'stewardship'
-export interface TalentDef extends Bonus { name: string; desc: string; kind: TalentKind; region: TalentRegion; chapter: number }
-export const WORLD_MAP_CHAPTER = 4 // completing Beyond the Walls opens the World Map, and with it Outposts and Trade Routes
+// Levers only Talents pull, on top of the shared Bonus. Each adds its fraction; `…Cost`, `upkeep` and `injury…` are
+// taken off instead (so 0.1 = 10% less), and `party`, `recruits`, `housing` and `offlineCap` are flat amounts.
+export interface TalentBonus extends Bonus {
+  yield?: number // more Materials (not Gold) from each Job cycle
+  expeditionCost?: number
+  party?: number // more Villagers in a Party
+  injuryChance?: number
+  injuryTime?: number
+  upkeep?: number
+  buildCost?: number // building and upgrading Buildings
+  housing?: number
+  hireCost?: number
+  recruits?: number // more Recruits in the Tavern pool
+  traitChance?: number // added chance that a Recruit rolls a Trait
+  tradeRate?: number // more of each load a Foreign City sells
+  reputation?: number // more Reputation per Trade Route cycle
+  rareYield?: number // more Rare Materials from Outposts and Ruins
+  offlineCap?: number // seconds
+}
+export type WebSpot = [depth: number, lane: number]
+export interface TalentDef extends TalentBonus { name: string; desc: string; kind: TalentKind; region: TalentRegion; chapter: number; at: WebSpot }
+export const WORLD_MAP_CHAPTER = 4 // completing Beyond the Walls opens the World Map, and with it Expeditions, Outposts and Trade Routes
 export const TALENTS = {
-  diligence: { name: 'Diligence', desc: '+5% speed everywhere', kind: 'minor', region: 'industry', chapter: 0, speed: 0.05 },
-  green_fields: { name: 'Green Fields', desc: '+10% speed at Farms and Lumber Camps', kind: 'minor', region: 'industry', chapter: 0, workplaces: ['farm', 'lumbercamp'], speed: 0.1 },
-  quick_study: { name: 'Quick Study', desc: '+10% XP', kind: 'minor', region: 'industry', chapter: 0, xp: 0.1 },
-  trailcraft: { name: 'Trailcraft', desc: 'Expeditions travel 10% faster', kind: 'minor', region: 'wayfinding', chapter: 0, expeditionSpeed: 0.1 },
-  sure_footed: { name: 'Sure-Footed', desc: '+5% Expedition success', kind: 'minor', region: 'wayfinding', chapter: 0, expedition: 0.05 },
-  prospecting: { name: 'Prospecting', desc: '+20% speed at Outposts', kind: 'notable', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, workplaces: ['outpost'], speed: 0.2 },
-  coin_sense: { name: 'Coin Sense', desc: '+10% Gold from all Jobs', kind: 'minor', region: 'stewardship', chapter: 0, gold: 0.1 },
-  haggling: { name: 'Haggling', desc: '+15% speed on Trade Routes', kind: 'minor', region: 'stewardship', chapter: WORLD_MAP_CHAPTER, trade: 0.15 },
+  // Industry: Villager speed, yields, XP, Upkeep, Injuries
+  diligence: { name: 'Diligence', desc: '+5% speed everywhere', kind: 'minor', region: 'industry', chapter: 0, at: [1, 0], speed: 0.05 },
+  green_fields: { name: 'Green Fields', desc: '+10% speed at Farms and Lumber Camps', kind: 'minor', region: 'industry', chapter: 0, at: [2, -1], workplaces: ['farm', 'lumbercamp'], speed: 0.1 },
+  quick_study: { name: 'Quick Study', desc: '+10% XP', kind: 'minor', region: 'industry', chapter: 0, at: [2, 1], xp: 0.1 },
+  steady_hands: { name: 'Steady Hands', desc: '+5% speed everywhere', kind: 'minor', region: 'industry', chapter: 0, at: [3, 0], speed: 0.05 },
+  bountiful_harvest: { name: 'Bountiful Harvest', desc: '+15% Food from Farms', kind: 'minor', region: 'industry', chapter: 0, at: [3, -2], workplaces: ['farm'], yield: 0.15 },
+  timber_rights: { name: 'Timber Rights', desc: '+15% Wood from Lumber Camps', kind: 'minor', region: 'industry', chapter: 0, at: [3, -1], workplaces: ['lumbercamp'], yield: 0.15 },
+  frugal_meals: { name: 'Frugal Meals', desc: '-10% Upkeep', kind: 'minor', region: 'industry', chapter: 0, at: [3, 1], upkeep: 0.1 },
+  mentorship: { name: 'Mentorship', desc: '+10% XP', kind: 'minor', region: 'industry', chapter: 0, at: [3, 2], xp: 0.1 },
+  work_ethic: { name: 'Work Ethic', desc: '+15% speed everywhere', kind: 'notable', region: 'industry', chapter: 0, at: [4, 0], speed: 0.15 },
+  stonecutting: { name: 'Stonecutting', desc: '+15% speed at Quarries', kind: 'minor', region: 'industry', chapter: 1, at: [4, -2], workplaces: ['quarry'], speed: 0.15 },
+  deep_veins: { name: 'Deep Veins', desc: '+15% Stone and Ore from Quarries and Mines', kind: 'minor', region: 'industry', chapter: 1, at: [4, -1], workplaces: ['quarry', 'mine'], yield: 0.15 },
+  lean_rations: { name: 'Lean Rations', desc: '-10% Upkeep', kind: 'minor', region: 'industry', chapter: 0, at: [4, 1], upkeep: 0.1 },
+  apprenticeship: { name: 'Apprenticeship', desc: '+25% XP', kind: 'notable', region: 'industry', chapter: 0, at: [4, 2], xp: 0.25 },
+  granaries: { name: 'Granaries', desc: '-10% Upkeep', kind: 'minor', region: 'industry', chapter: 0, at: [4, -3], upkeep: 0.1 }, // path to Stewardship
+  master_craftsmen: { name: 'Master Craftsmen', desc: '+15% Materials from every Job', kind: 'notable', region: 'industry', chapter: 0, at: [5, -1], yield: 0.15 },
+  guild_training: { name: 'Guild Training', desc: '+15% speed at Mines and the Guild Hall', kind: 'minor', region: 'industry', chapter: 2, at: [5, 0], workplaces: ['mine', 'guildhall'], speed: 0.15 },
+  field_medicine: { name: 'Field Medicine', desc: 'Injuries heal 25% sooner', kind: 'minor', region: 'industry', chapter: WORLD_MAP_CHAPTER, at: [5, 1], injuryTime: 0.25 },
+  caution: { name: 'Caution', desc: '-20% Injury chance', kind: 'minor', region: 'industry', chapter: WORLD_MAP_CHAPTER, at: [5, 2], injuryChance: 0.2 },
+  bonesetters: { name: 'Bonesetters', desc: 'Injuries heal 40% sooner, -15% Injury chance', kind: 'notable', region: 'industry', chapter: WORLD_MAP_CHAPTER, at: [6, 1], injuryTime: 0.4, injuryChance: 0.15 },
+  hardy_travellers: { name: 'Hardy Travellers', desc: '+5% Expedition success', kind: 'minor', region: 'industry', chapter: WORLD_MAP_CHAPTER, at: [6, 3], expedition: 0.05 }, // path to Wayfinding
+
+  // Wayfinding: Expeditions, exploring, Outposts, Ruins
+  trailcraft: { name: 'Trailcraft', desc: 'Expeditions travel 10% faster', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [1, 0], expeditionSpeed: 0.1 },
+  sure_footed: { name: 'Sure-Footed', desc: '+5% Expedition success', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [2, -1], expedition: 0.05 },
+  light_packs: { name: 'Light Packs', desc: 'Expeditions cost 10% less', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [2, 0], expeditionCost: 0.1 },
+  prospecting: { name: 'Prospecting', desc: '+20% speed at Outposts', kind: 'notable', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [2, 1], workplaces: ['outpost'], speed: 0.2 },
+  provisioner: { name: 'Provisioner', desc: 'Expeditions cost 10% less', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [3, -2], expeditionCost: 0.1 },
+  keen_eye: { name: 'Keen Eye', desc: '+5% Expedition success', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [3, -1], expedition: 0.05 },
+  pathfinder: { name: 'Pathfinder', desc: 'Expeditions travel 10% faster', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [3, 0], expeditionSpeed: 0.1 },
+  rich_seams: { name: 'Rich Seams', desc: '+20% Rare Materials from Outposts and Ruins', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [3, 1], rareYield: 0.2 },
+  tomb_robbers: { name: 'Tomb Robbers', desc: '+20% Rare Materials from Outposts and Ruins', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [3, 2], rareYield: 0.2 },
+  supply_lines: { name: 'Supply Lines', desc: 'Expeditions cost 15% less', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [4, -2], expeditionCost: 0.15 },
+  veteran_guides: { name: 'Veteran Guides', desc: '+10% Expedition success', kind: 'notable', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [4, -1], expedition: 0.1 },
+  long_roads: { name: 'Long Roads', desc: 'Expeditions travel 25% faster', kind: 'notable', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [4, 0], expeditionSpeed: 0.25 },
+  deep_cores: { name: 'Deep Cores', desc: '+15% speed at Outposts', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [4, 1], workplaces: ['outpost'], speed: 0.15 },
+  pack_mules: { name: 'Pack Mules', desc: 'Expeditions cost 10% less', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [5, -2], expeditionCost: 0.1 },
+  strength_in_numbers: { name: 'Strength in Numbers', desc: '+1 Villager in a Party', kind: 'notable', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [5, -1], party: 1 },
+  trail_markers: { name: 'Trail Markers', desc: 'Expeditions travel 10% faster', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [5, 0], expeditionSpeed: 0.1 },
+  motherlode: { name: 'Motherlode', desc: '+40% Rare Materials from Outposts and Ruins', kind: 'notable', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [5, 1], rareYield: 0.4 },
+
+  // Stewardship: Gold, trade, Reputation, costs, Housing, hiring, Offline Progress cap
+  coin_sense: { name: 'Coin Sense', desc: '+10% Gold from all Jobs', kind: 'minor', region: 'stewardship', chapter: 0, at: [1, 0], gold: 0.1 },
+  haggling: { name: 'Haggling', desc: '+15% speed on Trade Routes', kind: 'minor', region: 'stewardship', chapter: WORLD_MAP_CHAPTER, at: [2, -1], trade: 0.15 },
+  open_doors: { name: 'Open Doors', desc: 'Hiring costs 15% less', kind: 'minor', region: 'stewardship', chapter: 1, at: [2, 0], hireCost: 0.15 },
+  thrift: { name: 'Thrift', desc: 'Buildings and upgrades cost 10% less', kind: 'minor', region: 'stewardship', chapter: 0, at: [2, 1], buildCost: 0.1 },
+  good_name: { name: 'Good Name', desc: '+50% Reputation from Trade Routes', kind: 'minor', region: 'stewardship', chapter: WORLD_MAP_CHAPTER, at: [3, -2], reputation: 0.5 },
+  fair_dealing: { name: 'Fair Dealing', desc: 'Foreign Cities sell 10% more per load', kind: 'minor', region: 'stewardship', chapter: WORLD_MAP_CHAPTER, at: [3, -1], tradeRate: 0.1 },
+  word_of_mouth: { name: 'Word of Mouth', desc: '+1 Recruit at the Tavern', kind: 'minor', region: 'stewardship', chapter: 1, at: [3, 0], recruits: 1 },
+  masons_guild: { name: "Masons' Guild", desc: 'Buildings and upgrades cost 10% less', kind: 'minor', region: 'stewardship', chapter: 0, at: [3, 1], buildCost: 0.1 },
+  cozy_homes: { name: 'Cozy Homes', desc: '+2 Housing', kind: 'minor', region: 'stewardship', chapter: 0, at: [3, 2], housing: 2 },
+  ambassadors: { name: 'Ambassadors', desc: '+100% Reputation from Trade Routes', kind: 'notable', region: 'stewardship', chapter: WORLD_MAP_CHAPTER, at: [4, -2], reputation: 1 },
+  trade_charter: { name: 'Trade Charter', desc: 'Foreign Cities sell 25% more per load', kind: 'notable', region: 'stewardship', chapter: WORLD_MAP_CHAPTER, at: [4, -1], tradeRate: 0.25 },
+  good_judge: { name: 'Good Judge', desc: 'Recruits are 15% likelier to have a Trait, and to have two', kind: 'notable', region: 'stewardship', chapter: 1, at: [4, 0], traitChance: 0.15 },
+  master_builders: { name: 'Master Builders', desc: 'Buildings and upgrades cost 20% less', kind: 'notable', region: 'stewardship', chapter: 0, at: [4, 1], buildCost: 0.2 },
+  shared_hearths: { name: 'Shared Hearths', desc: '+2 Housing', kind: 'minor', region: 'stewardship', chapter: 0, at: [4, 2], housing: 2 },
+  road_wardens: { name: 'Road Wardens', desc: 'Expeditions cost 5% less, +10% speed on Trade Routes', kind: 'minor', region: 'stewardship', chapter: WORLD_MAP_CHAPTER, at: [5, -3], expeditionCost: 0.05, trade: 0.1 }, // path to Wayfinding
+  good_wages: { name: 'Good Wages', desc: 'Hiring costs 15% less', kind: 'minor', region: 'stewardship', chapter: 1, at: [5, 0], hireCost: 0.15 },
+  night_watch: { name: 'Night Watch', desc: '+2h Offline Progress cap', kind: 'minor', region: 'stewardship', chapter: 0, at: [5, 1], offlineCap: 2 * 3600 },
+  trusted_stewards: { name: 'Trusted Stewards', desc: '+4h Offline Progress cap', kind: 'notable', region: 'stewardship', chapter: 0, at: [6, 1], offlineCap: 4 * 3600 },
 } satisfies Record<string, TalentDef>
 export type TalentId = keyof typeof TALENTS
 // The web's paths, both ways. 'centre' is where every build starts: it isn't a Talent and is never taken.
 export const TALENT_LINKS: ['centre' | TalentId, TalentId][] = [
-  ['centre', 'diligence'], ['diligence', 'green_fields'], ['diligence', 'quick_study'],
-  ['centre', 'trailcraft'], ['trailcraft', 'sure_footed'], ['trailcraft', 'prospecting'],
-  ['centre', 'coin_sense'], ['coin_sense', 'haggling'],
+  ['centre', 'diligence'], ['diligence', 'green_fields'], ['diligence', 'quick_study'], ['diligence', 'steady_hands'],
+  ['green_fields', 'bountiful_harvest'], ['green_fields', 'timber_rights'], ['quick_study', 'frugal_meals'], ['quick_study', 'mentorship'],
+  ['steady_hands', 'work_ethic'], ['bountiful_harvest', 'stonecutting'], ['bountiful_harvest', 'granaries'], ['timber_rights', 'deep_veins'],
+  ['frugal_meals', 'lean_rations'], ['mentorship', 'apprenticeship'], ['deep_veins', 'master_craftsmen'], ['stonecutting', 'master_craftsmen'],
+  ['work_ethic', 'guild_training'], ['lean_rations', 'field_medicine'], ['apprenticeship', 'caution'], ['field_medicine', 'bonesetters'],
+  ['caution', 'bonesetters'], ['caution', 'hardy_travellers'],
+
+  ['centre', 'trailcraft'], ['trailcraft', 'sure_footed'], ['trailcraft', 'light_packs'], ['trailcraft', 'prospecting'],
+  ['sure_footed', 'provisioner'], ['sure_footed', 'keen_eye'], ['light_packs', 'pathfinder'], ['prospecting', 'rich_seams'], ['prospecting', 'tomb_robbers'],
+  ['provisioner', 'supply_lines'], ['keen_eye', 'veteran_guides'], ['pathfinder', 'long_roads'], ['rich_seams', 'deep_cores'],
+  ['supply_lines', 'pack_mules'], ['veteran_guides', 'strength_in_numbers'], ['long_roads', 'trail_markers'], ['deep_cores', 'motherlode'],
+
+  ['centre', 'coin_sense'], ['coin_sense', 'haggling'], ['coin_sense', 'open_doors'], ['coin_sense', 'thrift'],
+  ['haggling', 'good_name'], ['haggling', 'fair_dealing'], ['open_doors', 'word_of_mouth'], ['thrift', 'masons_guild'], ['thrift', 'cozy_homes'],
+  ['good_name', 'ambassadors'], ['fair_dealing', 'trade_charter'], ['word_of_mouth', 'good_judge'], ['masons_guild', 'master_builders'],
+  ['cozy_homes', 'shared_hearths'], ['ambassadors', 'road_wardens'], ['good_judge', 'good_wages'], ['master_builders', 'night_watch'],
+  ['night_watch', 'trusted_stewards'],
+
+  // Paths between neighbouring regions
+  ['granaries', 'shared_hearths'], ['hardy_travellers', 'strength_in_numbers'], ['road_wardens', 'tomb_robbers'],
 ]
+// Keystones (#20) will sit at the outer end of each region, linked from these Talents.
+export const KEYSTONE_SLOTS: Record<TalentRegion, { at: WebSpot; from: TalentId[] }> = {
+  industry: { at: [6, 0], from: ['guild_training', 'master_craftsmen', 'bonesetters'] },
+  wayfinding: { at: [6, 0], from: ['trail_markers', 'strength_in_numbers', 'motherlode'] },
+  stewardship: { at: [6, 0], from: ['good_wages', 'trade_charter', 'trusted_stewards'] },
+}
+// Each region fans out in its own direction from the centre; Wayfinding lies between Industry's +lanes and Stewardship's -lanes.
+export const TALENT_REGION_ANGLES: Record<TalentRegion, number> = { industry: 90, wayfinding: 210, stewardship: 330 } // degrees, counter-clockwise from +x
+/** Where a spot in a region sits on the web, in grid units: x right, y up, the centre at 0,0. */
+export function webPosition(region: TalentRegion, [depth, lane]: WebSpot) {
+  const a = (TALENT_REGION_ANGLES[region] * Math.PI) / 180
+  return { x: depth * Math.cos(a) - lane * Math.sin(a), y: depth * Math.sin(a) + lane * Math.cos(a) }
+}
 
 export const NAMES = [
   'Ada', 'Bram', 'Cora', 'Dag', 'Edda', 'Finn', 'Greta', 'Hal', 'Ivy', 'Jory', 'Kaja', 'Leif', 'Mira', 'Nils',

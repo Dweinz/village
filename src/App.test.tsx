@@ -124,7 +124,7 @@ test('completing Beyond the Walls announces the World Map and shows the button t
   const game = newGame(1)
   Object.assign(game, { chapter: 3 })
   game.plots[0]!.level = 4
-  game.plots[3] = { type: 'mine', level: 1 }
+  game.plots[3] = { type: 'mine', level: 1, paid: {} }
   game.stock.ore = 50 // every Objective of Beyond the Walls is met
   localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
   render(<App />)

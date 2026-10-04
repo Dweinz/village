@@ -7,8 +7,8 @@ import {
   type Bag, type BuildingType, type Res,
 } from './sim/data'
 import {
-  CHAPTERS, OFFLINE_CAP, REROLL_COST, advance, assign, build, buildCost, canAfford, canSpecialize, currentJob, demolish, demolishRefund, jobOf, plotHousing, hire,
-  hireCost, housing, jobsFor, maxLevel, newGame, raise, reroll, slots, specialize, unassign, upgrade, workers, worldMapUnlocked, xpToNext,
+  CHAPTERS, REROLL_COST, advance, assign, build, buildCost, canAfford, canSpecialize, currentJob, demolish, demolishRefund, jobOf, plotHousing, hire,
+  hireCost, housing, jobsFor, maxLevel, newGame, offlineCap, raise, reroll, slots, specialize, unassign, upgrade, workers, worldMapUnlocked, xpToNext,
   type Game, type GameEvent, type Villager,
 } from './sim/game'
 import { SAVE_KEY, fromSave, toSave } from './sim/save'
@@ -21,11 +21,12 @@ function boot(): { game: Game; report: Report | null } {
   const saved = text === null ? null : fromSave(text)
   if (!saved) return { game: newGame(), report: null } // no save, or a corrupt one: start fresh
   const away = (Date.now() - saved.savedAt) / 1000
-  const seconds = Math.min(away, OFFLINE_CAP)
+  const cap = offlineCap(saved.game)
+  const seconds = Math.min(away, cap)
   if (seconds < 60) return { game: advance(saved.game, Math.max(0, seconds)), report: null }
   const events: GameEvent[] = []
   const game = advance(saved.game, seconds, events)
-  return { game, report: { seconds, capped: away > OFFLINE_CAP, before: saved.game.stock, after: game.stock, events } }
+  return { game, report: { seconds, capped: away > cap, before: saved.game.stock, after: game.stock, events } }
 }
 
 const Cost = ({ bag, game }: { bag: Bag; game?: Game }) => (
@@ -80,7 +81,7 @@ export default function App() {
     const tick = setInterval(() => {
       const now = performance.now()
       const events: GameEvent[] = []
-      commit(advance(ref.current, Math.min((now - last) / 1000, OFFLINE_CAP), events))
+      commit(advance(ref.current, Math.min((now - last) / 1000, offlineCap(ref.current)), events))
       last = now
       events.filter((e) => e.kind !== 'traded').forEach((e) => toast(describe(e))) // every Trade Route cycle would be noise
     }, 250)
@@ -158,9 +159,9 @@ function PlotPanel({ game, plot, act, onClose }: { game: Game; plot: number; act
             <div key={t} className={`card row ${locked ? 'locked' : ''}`}>
               <div>
                 <strong>{BUILDINGS[t].name}</strong>
-                <div className="muted small">{locked ? `Unlocks in Chapter ${BUILDINGS[t].chapter + 1}` : <Cost bag={buildCost(t, 0)} game={game} />}</div>
+                <div className="muted small">{locked ? `Unlocks in Chapter ${BUILDINGS[t].chapter + 1}` : <Cost bag={buildCost(game, t, 0)} game={game} />}</div>
               </div>
-              <button disabled={locked || !canAfford(game, buildCost(t, 0))} onClick={() => act((g) => build(g, plot, t))}>Build</button>
+              <button disabled={locked || !canAfford(game, buildCost(game, t, 0))} onClick={() => act((g) => build(g, plot, t))}>Build</button>
             </div>
           )
         })}
@@ -178,9 +179,9 @@ function PlotPanel({ game, plot, act, onClose }: { game: Game; plot: number; act
       <div className="head"><h2>{def.name} <span className="lvl">Lv {p.level}</span></h2><button className="ghost" onClick={onClose}>✕</button></div>
       <div className="card row">
         <div className="small">
-          {atMax ? <span className="muted">{p.type === 'townhall' ? 'Max level' : 'Upgrade the Town Hall to go higher'}</span> : <>Upgrade: <Cost bag={buildCost(p.type, p.level)} game={game} /></>}
+          {atMax ? <span className="muted">{p.type === 'townhall' ? 'Max level' : 'Upgrade the Town Hall to go higher'}</span> : <>Upgrade: <Cost bag={buildCost(game, p.type, p.level)} game={game} /></>}
         </div>
-        <button disabled={atMax || !canAfford(game, buildCost(p.type, p.level))} onClick={() => act((g) => upgrade(g, plot))}>Upgrade</button>
+        <button disabled={atMax || !canAfford(game, buildCost(game, p.type, p.level))} onClick={() => act((g) => upgrade(g, plot))}>Upgrade</button>
       </div>
       {p.type !== 'townhall' && (
         <div className="card row">

@@ -28,18 +28,20 @@ test("a later Chapter's Objectives don't count until the Chapters before it are 
 
 test("every Building's last upgrade also costs Rare Materials, and earlier ones don't", () => {
   for (const type of Object.keys(BUILDINGS) as (keyof typeof BUILDINGS)[]) {
-    expect(rareIn(buildCost(type, MAX_BUILDING_LEVEL - 1)), type).toBe(true)
-    for (let level = 0; level < MAX_BUILDING_LEVEL - 1; level++) expect(rareIn(buildCost(type, level)), `${type} ${level}`).toBe(false)
+    expect(rareIn(buildCost(newGame(1), type, MAX_BUILDING_LEVEL - 1)), type).toBe(true)
+    for (let level = 0; level < MAX_BUILDING_LEVEL - 1; level++) expect(rareIn(buildCost(newGame(1), type, level)), `${type} ${level}`).toBe(false)
   }
 })
 
 test('demolishing a Building at its last level gives back no Rare Materials', () => {
   const g = rich(newGame(1))
   g.plots[0]!.level = MAX_BUILDING_LEVEL
-  g.plots[1] = { type: 'farm', level: MAX_BUILDING_LEVEL }
-  const after = demolish(g, 1)
-  expect(after.stock.spice).toBe(g.stock.spice)
-  expect(after.stock.wood).toBeGreaterThan(g.stock.wood)
+  let built = build(g, 3, 'farm')
+  for (let level = 1; level < MAX_BUILDING_LEVEL; level++) built = upgrade(built, 3) // the last upgrade costs Spice
+  expect(built.stock.spice).toBeLessThan(g.stock.spice)
+  const after = demolish(built, 3)
+  expect(after.stock.spice).toBe(built.stock.spice)
+  expect(after.stock.wood).toBeGreaterThan(built.stock.wood)
 })
 
 test('the Town Hall cannot reach its last level without the Rare Materials', () => {
@@ -54,7 +56,7 @@ test('some Contracts cost Rare Materials up front', () => {
   expect(contracts.length).toBeGreaterThanOrEqual(1)
 
   const g = rich(newGame(1))
-  g.plots[3] = { type: 'tavern', level: 3 }
+  g.plots[3] = { type: 'tavern', level: 3, paid: {} }
   const banquet = BUILDINGS.tavern.jobs.find((j) => j.cost && rareIn(j.cost))!
   const started = assign(g, 1, 3, banquet.id)
   for (const [r, n] of Object.entries(banquet.cost!)) expect(started.stock[r as Res]).toBe(g.stock[r as Res] - n)

@@ -79,7 +79,7 @@ A one-off Job with a fixed duration and a reward that is paid once.
 _Avoid_: Task, quest, bounty
 
 **Party**:
-The one to three Villagers sent together on an Expedition.
+The Villagers sent together on an Expedition: one to three, or more with Talents.
 _Avoid_: Team, squad, group
 
 **Explore**:

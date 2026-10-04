@@ -73,17 +73,15 @@ test('an old save gives every Foreign City zero Reputation', () => {
   expect(fromSave(v1Text)!.game.worldMap.filter((s) => s.kind !== 'city').every((s) => s.reputation === undefined)).toBe(true)
 })
 
-test("an old save's starting Farm and Lumber Camp are marked free, and demolishing them refunds nothing", () => {
+test("an old save's starting Farm and Lumber Camp were never paid for, so demolishing them refunds nothing", () => {
   const g = fromSave(v1Text)!.game
-  expect(g.plots.map((p) => p?.free ?? false)).toEqual([false, true, true, false, false, false, false, false, false])
-  expect(demolishRefund(g.plots[1]!)).toEqual({})
+  expect(g.plots.map((p) => p && demolishRefund(p))).toEqual([{}, {}, {}, { wood: 15 }, null, null, null, null, null]) // the House cost 30 Wood
 })
 
-test('the migration marks an upgraded starting Farm free too, so only its upgrades are refunded', () => {
+test('the migration treats an upgraded starting Farm as free too, so only its upgrades are refunded', () => {
   const upgraded = structuredClone(v1Save) as any
   upgraded.game.plots[1] = { type: 'farm', level: 2 }
   const g = fromSave(JSON.stringify(upgraded))!.game
-  expect(g.plots[1]!.free).toBe(true)
   expect(demolishRefund(g.plots[1]!)).toEqual({ wood: 19 }) // half of the 38 Wood upgrade, nothing for the free level 1
 })
 
@@ -92,7 +90,7 @@ test('the migration leaves Plots 1 and 2 alone when they no longer hold the star
   swapped.game.plots[1] = { type: 'house', level: 1 }
   swapped.game.plots[2] = null
   const g = fromSave(JSON.stringify(swapped))!.game
-  expect(g.plots[1]).toEqual({ type: 'house', level: 1 })
+  expect(g.plots[1]).toEqual({ type: 'house', level: 1, paid: { wood: 30 } })
   expect(g.plots[2]).toBeNull()
 })
 

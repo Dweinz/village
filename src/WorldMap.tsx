@@ -1,13 +1,13 @@
 // The World Map view: a 2D chart of the Sites around the Settlement. Only reads state and dispatches (ADR 0001).
 import { useState } from 'react'
-import { activityText, costText, dur, type Act } from './format'
+import { activityText, costText, dur, fmtTenths, type Act } from './format'
 import {
-  EXPEDITION_ATTRS, EXPEDITION_MAX_PARTY, REPUTATION_TIERS, RES_ICON, RES_NAME, RUIN_INJURY_CHANCE, SITE_KINDS, SITE_MAX_DISTANCE, SITE_REVEAL_DISTANCE, SPECS,
+  EXPEDITION_ATTRS, REPUTATION_TIERS, RES_ICON, RES_NAME, SITE_KINDS, SITE_MAX_DISTANCE, SITE_REVEAL_DISTANCE, SPECS,
   type Res,
 } from './sim/data'
 import {
   assignOutpost, buildOutpost, canAfford, canJoinExpedition, canTrade, closeTradeRoute, foreignCity, nextReputationTier, openTradeRoute, outpostCost, outpostMaxLevel, outpostSlots,
-  outpostWorkers, planExpedition, recallExpedition, ruinLevel, ruinReward, ruinXp, sendExpedition, siteById, tradeRoutes, tradeStalled, unassign, upgradeOutpost,
+  injuryChance, maxParty, outpostWorkers, planExpedition, recallExpedition, ruinLevel, ruinReward, ruinXp, sendExpedition, siteById, tradeRoutes, tradeStalled, unassign, upgradeOutpost,
   type ExpeditionTarget, type Game,
 } from './sim/game'
 import type { Site } from './sim/world'
@@ -95,7 +95,7 @@ export function SitePanel({ game, site, act, onClose }: { game: Game; site: Site
         {site.material && <p className="small">Yields {RES_ICON[site.material]} {RES_NAME[site.material]}</p>}
       </div>
       {site.kind === 'deposit' && site.discovery === 'reached' && <OutpostCard game={game} site={site} act={act} />}
-      {site.kind === 'ruin' && <RuinCard site={site} />}
+      {site.kind === 'ruin' && <RuinCard game={game} site={site} />}
       {site.kind === 'city' && site.discovery === 'reached' && <ReputationCard game={game} site={site} />}
       {site.kind === 'city' && site.discovery === 'reached' && <TradeCard key={site.id} game={game} site={site} act={act} />}
       {site.discovery === 'revealed' && <PartyPicker key={site.id} game={game} target={{ kind: 'reach', site: site.id }} act={act} />}
@@ -106,13 +106,13 @@ export function SitePanel({ game, site, act, onClose }: { game: Game; site: Site
   )
 }
 
-function RuinCard({ site }: { site: Site }) {
+function RuinCard({ game, site }: { game: Game; site: Site }) {
   if (site.cleared) return <p className="card muted small">This Ruin has been cleared. Nothing is left inside.</p>
   return (
     <div className="card small">
       <div className="row"><strong>Every Party member level {ruinLevel(site)}+</strong><span className="badge warn">High risk</span></div>
-      <p className="muted">Worse odds than a normal Expedition; on failure each member has a {Math.round(RUIN_INJURY_CHANCE * 100)}% Injury chance. You can try again.</p>
-      <p>Reward: {costText(ruinReward(site))} · {ruinXp(site)} XP each</p>
+      <p className="muted">Worse odds than a normal Expedition; on failure each member has a {Math.round(injuryChance(game, 'ruin') * 100)}% Injury chance. You can try again.</p>
+      <p>Reward: {costText(ruinReward(game, site))} · {ruinXp(site)} XP each</p>
     </div>
   )
 }
@@ -123,7 +123,7 @@ function ReputationCard({ game, site }: { game: Game; site: Site }) {
   const names = (goods: Res[]) => goods.map((r) => `${RES_ICON[r]} ${RES_NAME[r]}`).join(', ')
   return (
     <section className="card small" aria-label="Reputation">
-      <div className="row"><strong>Reputation {reputation} · {REPUTATION_TIERS[tier].name}</strong></div>
+      <div className="row"><strong>Reputation {fmtTenths(reputation)} · {REPUTATION_TIERS[tier].name}</strong></div>
       {next ? (
         <>
           <p className="muted">Next: {next.name} at {next.reputation}</p>
@@ -149,7 +149,7 @@ function TradeCard({ game, site, act }: { game: Game; site: Site; act: Act }) {
       {tradeRoutes(game, site.id).map((v) => v.activity?.kind === 'trade' && (
         <div key={v.id} className="row small">
           <span>
-            {v.name}: {RES_ICON[v.activity.give]} {city.buys[v.activity.give]} → {RES_ICON[v.activity.get]} {city.sells[v.activity.get]}
+            {v.name}: {RES_ICON[v.activity.give]} {fmtTenths(city.buys[v.activity.give]!)} → {RES_ICON[v.activity.get]} {fmtTenths(city.sells[v.activity.get]!)}
             {tradeStalled(game, v) && <span className="muted"> · waiting for {RES_NAME[v.activity.give]}</span>}
           </span>
           <button className="ghost small" aria-label={`Close ${v.name}'s Trade Route`} onClick={() => act((g) => closeTradeRoute(g, v.id))}>Close</button>
@@ -162,11 +162,11 @@ function TradeCard({ game, site, act }: { game: Game; site: Site; act: Act }) {
       </select>
       <select value={give} aria-label="Send" onChange={(e) => setGive(e.target.value)}>
         <option value="">Send…</option>
-        {goods(city.buys).map((r) => <option key={r} value={r}>{RES_ICON[r]} {city.buys[r]} {RES_NAME[r]}</option>)}
+        {goods(city.buys).map((r) => <option key={r} value={r}>{RES_ICON[r]} {fmtTenths(city.buys[r]!)} {RES_NAME[r]}</option>)}
       </select>
       <select value={get} aria-label="Receive" onChange={(e) => setGet(e.target.value)}>
         <option value="">Receive…</option>
-        {goods(city.sells).map((r) => <option key={r} value={r}>{RES_ICON[r]} {city.sells[r]} {RES_NAME[r]}</option>)}
+        {goods(city.sells).map((r) => <option key={r} value={r}>{RES_ICON[r]} {fmtTenths(city.sells[r]!)} {RES_NAME[r]}</option>)}
       </select>
       <button
         className="wide"
@@ -235,7 +235,7 @@ function PartyPicker({ game, target, act }: { game: Game; target: ExpeditionTarg
 
   return (
     <>
-      <div className="eyebrow">Party · up to {EXPEDITION_MAX_PARTY}</div>
+      <div className="eyebrow">Party · up to {maxParty(game)}</div>
       <div role="group" aria-label="Party">
         {game.villagers.map((v) => {
           const locked = !canJoinExpedition(game, v)
@@ -254,7 +254,7 @@ function PartyPicker({ game, target, act }: { game: Game; target: ExpeditionTarg
       {plan ? (
         <div className="card">
           <div className="row small">
-            <span>{dur(plan.duration)} · {Object.entries(plan.cost).map(([r, n]) => `${RES_ICON[r as Res]} ${n}`).join(' ')}</span>
+            <span>{dur(plan.duration)} · {Object.entries(plan.cost).map(([r, n]) => `${RES_ICON[r as Res]} ${fmtTenths(n)}`).join(' ')}</span>
             <strong>{Math.round(plan.chance * 100)}% chance</strong>
           </div>
           {short.length > 0 && <p className="muted small">Not enough {short.join(' or ')}</p>}
