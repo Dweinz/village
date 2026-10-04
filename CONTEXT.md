@@ -152,6 +152,26 @@ _Avoid_: Rank, level (reserved for Villagers and Buildings)
 
 ### Progression
 
+**Renown**:
+The player's town-wide XP, earned from all Villager XP and from world milestones (revealing Sites, clearing Ruins, new Reputation Tiers). Each Renown rank grants a Talent Point.
+_Avoid_: Town level, fame, player XP
+
+**Talent Tree**:
+The single web of Talents shared by all of the player's Settlements, grown outward from a central start node through the Wayfinding, Industry and Stewardship regions. Reset on Prestige.
+_Avoid_: Skill tree, tech tree, perk tree
+
+**Talent**:
+A node in the Talent Tree, taken all-or-nothing with one Talent Point once it connects to a node already taken. A Talent is Minor, Notable, or a Keystone.
+_Avoid_: Skill, perk (reserved for Traits), upgrade
+
+**Talent Point**:
+The currency spent on Talents, granted per Renown rank and per completed Chapter. All of them come back on a respec, which costs Gold.
+_Avoid_: Skill point, Legacy (reserved for Prestige)
+
+**Keystone**:
+A rare Talent at the end of a region that changes a game rule and comes with a trade-off.
+_Avoid_: Capstone, ultimate
+
 **Prestige**:
 A voluntary reset of progress in exchange for permanent bonuses.
 _Avoid_: Rebirth, ascension, new game+
