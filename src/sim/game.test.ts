@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { advance, assign, assignOutpost, build, buildOutpost, demolish, hire, newGame, raise, sendExpedition, unassign, upgrade, workers, type GameEvent } from './game'
+import { advance, assign, assignOutpost, build, buildOutpost, demolish, demolishRefund, hire, newGame, raise, sendExpedition, unassign, upgrade, workers, type GameEvent } from './game'
 
 test('a Production Job yields Materials and XP each cycle', () => {
   let g = assign(newGame(1), 1, 2, 'chop')
@@ -90,6 +90,32 @@ test('demolishing refunds half of everything paid for the Building, rounded down
   const { wood, gold } = g.stock
   g = demolish(g, 4)
   expect([g.stock.wood - wood, g.stock.gold - gold]).toEqual([58, 43]) // floor(116 / 2), floor(87 / 2)
+})
+
+test('demolishing the starting Farm or Lumber Camp refunds nothing, since the player never paid for them', () => {
+  const g = newGame(1)
+  for (const plot of [1, 2]) {
+    expect(demolishRefund(g.plots[plot]!)).toEqual({})
+    expect(demolish(g, plot).stock).toEqual(g.stock)
+  }
+})
+
+test('demolishing an upgraded starting Building refunds half of the upgrades only', () => {
+  let g = newGame(1)
+  Object.assign(g.stock, { gold: 500, wood: 500 })
+  g.plots[0]!.level = 2
+  g = upgrade(upgrade(g, 1), 2) // Farm: 38 Wood, Lumber Camp: 38 Gold
+  const { wood, gold } = g.stock
+  g = demolish(demolish(g, 1), 2)
+  expect([g.stock.wood - wood, g.stock.gold - gold]).toEqual([19, 19])
+})
+
+test('a Building the player builds on a starting Plot refunds as usual', () => {
+  let g = newGame(1)
+  g.stock.wood = 500
+  g = build(demolish(g, 1), 1, 'farm')
+  const before = g.stock.wood
+  expect(demolish(g, 1).stock.wood - before).toBe(10) // half of 20 Wood
 })
 
 test('Villagers working in a demolished Building become idle and can be assigned elsewhere', () => {

@@ -19,7 +19,7 @@ A levelled structure on a Plot that offers Jobs and Slots.
 _Avoid_: Structure, facility
 
 **Demolish**:
-To remove a Building from its Plot, freeing the Plot and refunding half of what the Building cost. The Town Hall can't be demolished.
+To remove a Building from its Plot, freeing the Plot and refunding half of what the player paid for it (nothing for the starting Farm and Lumber Camp's level 1, and no Rare Materials). The Town Hall can't be demolished.
 _Avoid_: Destroy, sell, raze, remove
 
 **Slot**:

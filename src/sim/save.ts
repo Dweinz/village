@@ -23,6 +23,12 @@ export const MIGRATIONS: Migration[] = [
     worldMap: withMaterials(game.worldMap),
   }),
   (game) => ({ ...game, worldMap: withReputation(game.worldMap) }), // v6 → v7: every Foreign City's Reputation, from zero
+  (game) => ({ // v7 → v8: the starting Farm and Lumber Camp came free. A Farm on Plot 1 and a Lumber Camp on Plot 2,
+    // at any level, are taken to be the starting ones: a save can't tell them from a same-type rebuild on the same Plot.
+    // The layout is written out here rather than read from newGame, so this migration stays as it was if newGame changes.
+    ...game,
+    plots: game.plots.map((p: { type: string } | null, i: number) => (p && ((i === 1 && p.type === 'farm') || (i === 2 && p.type === 'lumbercamp')) ? { ...p, free: true } : p)),
+  }),
 ]
 
 export const SAVE_VERSION = MIGRATIONS.length + 1

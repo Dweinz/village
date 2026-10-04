@@ -171,6 +171,7 @@ function PlotPanel({ game, plot, act, onClose }: { game: Game; plot: number; act
   const here = workers(game, plot)
   const idle = game.villagers.filter((v) => !v.activity)
   const atMax = p.level >= maxLevel(game, p.type)
+  const refund = demolishRefund(p)
   return (
     <aside className="panel side">
       <div className="head"><h2>{def.name} <span className="lvl">Lv {p.level}</span></h2><button className="ghost" onClick={onClose}>✕</button></div>
@@ -182,7 +183,7 @@ function PlotPanel({ game, plot, act, onClose }: { game: Game; plot: number; act
       </div>
       {p.type !== 'townhall' && (
         <div className="card row">
-          <div className="small">Demolish and get back <Cost bag={demolishRefund(p)} /></div>
+          <div className="small">{Object.keys(refund).length ? <>Demolish and get back <Cost bag={refund} /></> : 'Demolish (no refund)'}</div>
           <button className="ghost" onClick={() => confirm(`Demolish this ${def.name}? This can't be undone.`) && act((g) => demolish(g, plot))}>Demolish</button>
         </div>
       )}

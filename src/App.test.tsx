@@ -82,6 +82,14 @@ test('demolishing a House asks first, then empties the Plot and refunds half its
   expect(amount('Wood')).toBe('85')
 })
 
+test('the starting Farm says demolishing it gives nothing back', () => {
+  localStorage.setItem(SAVE_KEY, toSave(newGame(1), Date.now()))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'Plot 2' })) // the starting Farm
+  expect(screen.getByText('Demolish (no refund)')).toBeTruthy()
+  expect(screen.queryByText(/get back/)).toBeNull()
+})
+
 test('the World Map opens once unlocked: revealed Sites can be inspected, the rest is fog', () => {
   const locked = newGame(1)
   locked.chapter = 3

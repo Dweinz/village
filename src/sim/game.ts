@@ -44,7 +44,7 @@ export interface Expedition {
   chance: number // fixed when the party sets out, as shown in the preview
 }
 
-export type Plot = { type: BuildingType; level: number } | null
+export type Plot = { type: BuildingType; level: number; free?: true } | null // free: placed by newGame, its level-1 cost never paid
 
 export interface Game {
   time: number
@@ -190,13 +190,16 @@ export const buildCost = (type: BuildingType, level: number): Bag => ({
   ...Object.fromEntries(Object.entries(BUILDINGS[type].cost).map(([r, n]) => [r, Math.round(n * UPGRADE_SCALE ** level)])),
   ...(level + 1 === MAX_BUILDING_LEVEL ? BUILDINGS[type].rareUpgrade : {}),
 })
-/** Half of everything paid for a Building (its level-1 cost and every upgrade), rounded down; Rare Materials are not given back. */
+/**
+ * Half of everything paid for a Building (its level-1 cost, unless it came free, and every upgrade), rounded down.
+ * Rare Materials are not given back. Empty when nothing was paid.
+ */
 export function demolishRefund(p: NonNullable<Plot>): Bag {
   const refund: Bag = {}
-  for (let level = 0; level < p.level; level++) {
+  for (let level = p.free ? 1 : 0; level < p.level; level++) {
     for (const [r, n] of Object.entries(buildCost(p.type, level))) if (!isRare(r as Res)) refund[r as Res] = (refund[r as Res] ?? 0) + n
   }
-  return Object.fromEntries(Object.entries(refund).map(([r, n]) => [r, Math.floor(n / 2)]))
+  return Object.fromEntries(Object.entries(refund).map(([r, n]) => [r, Math.floor(n / 2)] as const).filter(([, n]) => n > 0))
 }
 export const maxLevel = (g: Game, type: BuildingType) => (type === 'townhall' ? MAX_BUILDING_LEVEL : g.plots[0]!.level)
 export const canAfford = (g: Game, bag: Bag) => Object.entries(bag).every(([r, n]) => g.stock[r as Res] >= n)
@@ -278,8 +281,8 @@ export function newGame(seed = Date.now()): Game {
     chapter: 0, done: [], starving: false, nextId: 1, worldMap: withReputation(withMaterials(generateWorldMap(seed))), expeditions: [],
   }
   g.plots[0] = { type: 'townhall', level: 1 }
-  g.plots[1] = { type: 'farm', level: 1 }
-  g.plots[2] = { type: 'lumbercamp', level: 1 }
+  g.plots[1] = { type: 'farm', level: 1, free: true }
+  g.plots[2] = { type: 'lumbercamp', level: 1, free: true }
   for (let i = 0; i < 3; i++) g.villagers.push(makeVillager(g))
   return g
 }
