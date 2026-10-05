@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
 import { CHAPTERS, advance, assign, assignOutpost, build, buildOutpost, foreignCity, newGame, nextReputationTier, openTradeRoute, ruinLevel, sendExpedition, type GameEvent } from './sim/game'
-import { FOREIGN_CITIES, MAX_BUILDING_LEVEL, REPUTATION_TIERS, RES_NAME, SITE_KINDS } from './sim/data'
+import { FOREIGN_CITIES, MAX_BUILDING_LEVEL, REPUTATION_TIERS, RES_NAME, SITE_KINDS, TALENTS, WORLD_MAP_CHAPTER } from './sim/data'
 import { SAVE_KEY, toSave } from './sim/save'
 import { costText } from './format'
 
@@ -489,4 +489,33 @@ test('once every Chapter is complete, the game says more is coming in v3', () =>
   passTime(1000)
   expect(screen.getByText(/All Chapters complete: more is coming in v3/)).toBeTruthy()
   expect(within(screen.getByRole('complementary', { name: 'Objectives' })).getByText(/coming in v3/)).toBeTruthy()
+})
+
+test('the Talent Tree overlay shows Talent Points and Renown, explains locked Talents, and takes one you can take', () => {
+  const game = newGame(1)
+  Object.assign(game, { talentPoints: 1, renownRank: 2 })
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: /^Talents/ }))
+
+  const tree = screen.getByRole('dialog', { name: 'Talent Tree' })
+  expect(within(tree).getByText('1 Talent Point')).toBeTruthy()
+  expect(within(tree).getByText('Renown rank 2')).toBeTruthy()
+
+  const prospecting = within(tree).getByRole('button', { name: 'Prospecting, locked' })
+  fireEvent.click(prospecting) // locked: does nothing but explain why
+  expect(within(tree).getByRole('tooltip').textContent).toContain(`Prospecting requires Chapter ${WORLD_MAP_CHAPTER + 1}`)
+  expect(within(tree).getByText('1 Talent Point')).toBeTruthy()
+
+  fireEvent.mouseEnter(within(tree).getByRole('button', { name: 'Diligence, can take' }))
+  expect(within(tree).getByRole('tooltip').textContent).toContain(TALENTS.diligence.desc)
+  fireEvent.click(within(tree).getByRole('button', { name: 'Diligence, can take' }))
+  expect(within(tree).getByRole('button', { name: 'Diligence, taken' })).toBeTruthy()
+  expect(within(tree).getByText('0 Talent Points')).toBeTruthy()
+  fireEvent.click(within(tree).getByRole('button', { name: 'Green Fields, locked' })) // connected now, but no points left
+  expect(within(tree).queryByRole('button', { name: 'Green Fields, taken' })).toBeNull()
+
+  expect(within(tree).getByRole('link', { name: 'game-icons.net' })).toBeTruthy()
+  fireEvent.click(within(tree).getByRole('button', { name: 'Close' }))
+  expect(screen.queryByRole('dialog', { name: 'Talent Tree' })).toBeNull()
 })

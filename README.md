@@ -14,3 +14,7 @@ npm test        # simulation tests
 - `src/Scene.tsx` — the three.js diorama (React Three Fiber). `src/App.tsx` — UI, game loop, saves.
 
 Roadmap: **v1** town loop (this) → **v2** World Map, Expeditions, trade → **v3** multiple Settlements, Prestige.
+
+## Credits
+
+Talent icons by Lorc and Delapouite from [game-icons.net](https://game-icons.net), under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). The background square is removed so each icon works as a tintable mask.

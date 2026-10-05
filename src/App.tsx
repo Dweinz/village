@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Scene } from './Scene'
+import { TalentTree } from './TalentTree'
 import { ExplorePanel, SitePanel, WorldMap } from './WorldMap'
 import { activityText, costText, dur, fmt, type Act } from './format'
 import {
@@ -63,6 +64,7 @@ export default function App() {
   const [selected, setSelected] = useState<number | null>(null)
   const [view, setView] = useState<View>('settlement')
   const [site, setSite] = useState<number | 'explore' | null>(null)
+  const [talents, setTalents] = useState(false)
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([])
   const ref = useRef(game)
   const resetting = useRef(false)
@@ -102,13 +104,14 @@ export default function App() {
       {view === 'map'
         ? <WorldMap game={game} selected={site} onSelect={setSite} onExplore={() => setSite('explore')} act={act} />
         : <Scene game={game} selected={selected} onSelect={setSelected} />}
-      <TopBar game={game} onReset={reset} view={view} onView={(v) => { setView(v); setSite(null) }} />
+      <TopBar game={game} onReset={reset} view={view} onView={(v) => { setView(v); setSite(null) }} onTalents={() => setTalents(true)} />
       <Objectives game={game} />
       {view === 'settlement' && selected !== null && <PlotPanel game={game} plot={selected} act={act} onClose={() => setSelected(null)} />}
       {view === 'map' && site === 'explore' && <ExplorePanel game={game} act={act} onClose={() => setSite(null)} />}
       {view === 'map' && typeof site === 'number' && <SitePanel game={game} site={game.worldMap.find((s) => s.id === site)!} act={act} onClose={() => setSite(null)} />}
       <Roster game={game} act={act} />
       <div className="toasts">{toasts.map((t) => <div key={t.id} className="toast">{t.text}</div>)}</div>
+      {talents && <TalentTree game={game} act={act} onClose={() => setTalents(false)} />}
       {report && <ReportModal report={report} onClose={() => setReport(null)} />}
     </>
   )
@@ -116,13 +119,14 @@ export default function App() {
 
 type View = 'settlement' | 'map'
 
-function TopBar({ game, onReset, view, onView }: { game: Game; onReset: () => void; view: View; onView: (v: View) => void }) {
+function TopBar({ game, onReset, view, onView, onTalents }: { game: Game; onReset: () => void; view: View; onView: (v: View) => void; onTalents: () => void }) {
   return (
     <header className="panel topbar">
       <strong className="logo">Hearthhold</strong>
       {worldMapUnlocked(game) && (view === 'map'
         ? <button className="view" onClick={() => onView('settlement')}>Settlement</button>
         : <button className="view" onClick={() => onView('map')}>World Map</button>)}
+      <button className="view" onClick={onTalents}>Talents{game.talentPoints > 0 && <span className="pip"> {game.talentPoints}</span>}</button>
       {RESOURCES.filter((r) => !isRare(r) || worldMapUnlocked(game) || game.stock[r] > 0) /* Rare Materials once there's a World Map */.map((r) => <span key={r} className="res" title={RES_NAME[r]} aria-label={`${RES_NAME[r]} ${fmt(game.stock[r])}`}>{RES_ICON[r]} {fmt(game.stock[r])}</span>)}
       <span className="res" title="Villagers / Housing">👥 {game.villagers.length}/{housing(game)}</span>
       {game.starving && <span className="badge warn">Starving</span>}
