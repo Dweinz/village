@@ -152,6 +152,7 @@ button.wide { width: 100%; margin-top: 8px; }
 .tt-tip p { margin: 6px 0 0; }
 .tt-req { color: #ff6b5a; font-weight: 600; }
 .tt-ok { color: #8fd18a; }
+.tt-drawback { color: #f0a35e; }
 .tt-credits { padding: 6px 16px; color: #8d826d; border-top: 1px solid #5a5244; }
 .tt-credits a { color: #c9b27a; }
 

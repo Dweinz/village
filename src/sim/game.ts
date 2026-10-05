@@ -4,7 +4,7 @@ import {
   EXPEDITION_CHANCE_RANGE, EXPEDITION_FOOD_PER_MEMBER_DISTANCE, EXPEDITION_GOLD_PER_DISTANCE, EXPEDITION_MAX_PARTY,
   EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, INJURY_CHANCE, INJURY_SECONDS, MAX_BUILDING_LEVEL, RECRUIT_POOL, NAMES, OUTPOST_COST, OUTPOST_JOB, OUTPOST_SLOTS, OUTPOST_YIELD, RES_NAME,
   FOREIGN_CITIES, RENOWN_BASE, RENOWN_GROWTH, RENOWN_PER_REPUTATION_TIER, RENOWN_PER_RUIN_CLEARED, RENOWN_PER_SITE_REVEALED, REPUTATION_PER_CYCLE, REPUTATION_TIERS, RUIN_BASE_CHANCE, RUIN_INJURY_CHANCE, RUIN_LEVEL_BASE, RUIN_MAX_CHANCE, RUIN_REWARD_PER_DISTANCE, RUIN_XP_PER_DISTANCE, RARE_MATERIALS, SITE_REVEAL_DISTANCE, SPECS, isRare, SPEC_LEVEL, TALENT_LINKS, TALENTS, TRADE_JOB, TRAITS, WORLD_MAP_CHAPTER,
-  TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type ForeignCityDef, type JobDef, type Res, type SpecId, type TalentBonus, type TalentDef, type TalentId, type TraitId, type Workplace,
+  TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type ForeignCityDef, type JobDef, type KeystoneRule, type Res, type SpecId, type TalentBonus, type TalentDef, type TalentId, type TraitId, type Workplace,
 } from './data'
 import { mulberry32 } from './random'
 import { generateWorldMap, withMaterials, withReputation, type Site } from './world'
@@ -197,11 +197,11 @@ export const xpToNext = (level: number) => Math.round(10 * level ** 1.6)
 export const renownToNext = (rank: number) => Math.round(RENOWN_BASE * (rank + 1) ** RENOWN_GROWTH)
 export const hireCost = (g: Game) => Math.round(50 * 1.5 ** Math.max(0, g.villagers.length - 3) * discount(g, 'hireCost'))
 /**
- * What it costs to raise a Building from `level` (0 = building it) to the next, after building cost Talents; the last
- * upgrade also costs Rare Materials, which no Talent makes cheaper.
+ * What it costs to raise a Building from `level` (0 = building it) to the next, after building cost Talents and Keystones;
+ * the last upgrade also costs Rare Materials, which no Talent changes.
  */
 export const buildCost = (g: Game, type: BuildingType, level: number): Bag => ({
-  ...Object.fromEntries(Object.entries(BUILDINGS[type].cost).map(([r, n]) => [r, Math.round(n * UPGRADE_SCALE ** level * discount(g, 'buildCost'))])),
+  ...Object.fromEntries(Object.entries(BUILDINGS[type].cost).map(([r, n]) => [r, Math.round(n * UPGRADE_SCALE ** level * discount(g, 'buildCost') * keystoneFactor(g, 'buildCost'))])),
   ...(level + 1 === MAX_BUILDING_LEVEL ? BUILDINGS[type].rareUpgrade : {}),
 })
 /** Half of the Gold and Materials paid for a Building (nothing for the starting Buildings' level 1), rounded down. Empty when nothing was paid. */
@@ -224,6 +224,10 @@ function talentBonus(g: Game, key: Exclude<keyof TalentBonus, 'workplaces'>, typ
 }
 /** What's left of a cost or chance after the Talents that take a share off it. */
 const discount = (g: Game, key: 'expeditionCost' | 'injuryChance' | 'injuryTime' | 'upkeep' | 'buildCost' | 'hireCost') => Math.max(0, 1 - talentBonus(g, key))
+/** The rules the taken Keystones change. */
+const keystoneRules = (g: Game) => g.talents.flatMap((id): KeystoneRule[] => { const t: TalentDef = TALENTS[id]; return t.rule ? [t.rule] : [] })
+/** The taken Keystones' factors on one rule, multiplied together (1 when none changes it). */
+const keystoneFactor = (g: Game, key: Exclude<keyof KeystoneRule, 'party'>) => keystoneRules(g).reduce((m, r) => m * (r[key] ?? 1), 1)
 const mult = (g: Game, v: Villager, type: Workplace, key: 'xp' | 'gold') =>
   bonuses(v).reduce((m, b) => (applies(b, type) ? m * (1 + (b[key] ?? 0)) : m), 1 + talentBonus(g, key, type))
 
@@ -321,7 +325,7 @@ export function newGame(seed = Date.now()): Game {
 function step(g: Game, s: number, ev: GameEvent[]) {
   g.time += s
 
-  const upkeep = g.villagers.length * UPKEEP * discount(g, 'upkeep') * s
+  const upkeep = g.villagers.length * UPKEEP * discount(g, 'upkeep') * keystoneFactor(g, 'upkeep') * s
   if (g.stock.food >= upkeep) {
     g.stock.food -= upkeep
     g.starving = false
@@ -475,8 +479,9 @@ export const ruinXp = (site: Site) => RUIN_XP_PER_DISTANCE * site.distance
 export const ruinReward = (g: Game, site: Site): Bag => Object.fromEntries(Object.entries(RUIN_REWARD_PER_DISTANCE)
   .map(([r, n]) => [r, n * site.distance * (isRare(r as Res) ? 1 + talentBonus(g, 'rareYield') : 1)]))
 
-/** How many Villagers a Party can hold. */
-export const maxParty = (g: Game) => EXPEDITION_MAX_PARTY + talentBonus(g, 'party')
+/** How many Villagers a Party can hold: more with Party size Talents, unless a Keystone caps it. */
+export const maxParty = (g: Game) =>
+  Math.min(EXPEDITION_MAX_PARTY + talentBonus(g, 'party'), ...keystoneRules(g).map((r) => r.party ?? Infinity))
 /** The chance that each member of a failed Expedition comes home Injured. */
 export const injuryChance = (g: Game, goal: Expedition['goal']) => (goal === 'ruin' ? RUIN_INJURY_CHANCE : INJURY_CHANCE) * discount(g, 'injuryChance')
 
@@ -511,7 +516,7 @@ export function planExpedition(g: Game, party: number[], target: ExpeditionTarge
   const raw = base - EXPEDITION_CHANCE_PER_DISTANCE * site.distance + EXPEDITION_CHANCE_PER_POINT * points + bonus
   return {
     site,
-    duration: EXPEDITION_SECONDS_PER_DISTANCE * site.distance / (1 + talentBonus(g, 'expeditionSpeed')),
+    duration: EXPEDITION_SECONDS_PER_DISTANCE * site.distance / (1 + talentBonus(g, 'expeditionSpeed')) * keystoneFactor(g, 'expeditionTime'),
     cost: {
       food: EXPEDITION_FOOD_PER_MEMBER_DISTANCE * site.distance * party.length * discount(g, 'expeditionCost'),
       gold: EXPEDITION_GOLD_PER_DISTANCE * site.distance * discount(g, 'expeditionCost'),

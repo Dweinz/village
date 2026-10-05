@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { BUILDINGS, KEYSTONE_SLOTS, TALENT_LINKS, TALENTS, WORLD_MAP_CHAPTER, webPosition, type TalentDef, type TalentId, type TalentRegion } from './data'
+import { BUILDINGS, TALENT_LINKS, TALENTS, WORLD_MAP_CHAPTER, webPosition, type TalentDef, type TalentId, type TalentRegion } from './data'
 
 // The shape of the whole Talent Tree web, read from data.
 const ids = Object.keys(TALENTS) as TalentId[]
@@ -8,12 +8,26 @@ const neighbours = (id: string) => TALENT_LINKS.flatMap(([a, b]) => (a === id ? 
 const REGIONS: TalentRegion[] = ['wayfinding', 'industry', 'stewardship']
 const TYPICAL_RUN_POINTS = 28 // a typical run earns about 25–30 Talent Points (#15)
 
-test('the web holds about 50–60 Minor and Notable Talents across the three regions', () => {
+const keystone = (r: TalentRegion) => ids.filter((id) => def(id).region === r && def(id).kind === 'keystone')
+
+test('the web holds about 50–60 Talents across the three regions', () => {
   expect(ids.length).toBeGreaterThanOrEqual(50)
   expect(ids.length).toBeLessThanOrEqual(60)
-  for (const id of ids) expect(['minor', 'notable'], id).toContain(def(id).kind) // Keystones come later (#20)
   for (const r of REGIONS) expect(ids.filter((id) => def(id).region === r).length, r).toBeGreaterThanOrEqual(15)
   expect(ids.filter((id) => def(id).kind === 'notable').length).toBeGreaterThanOrEqual(10)
+})
+
+test('one Keystone sits at the outer end of each region, reached only from inside it, and names its downside', () => {
+  for (const r of REGIONS) {
+    expect(keystone(r), r).toHaveLength(1)
+    const [id] = keystone(r)
+    const depth = (id: TalentId) => def(id).at[0]
+    expect(Math.max(...ids.filter((o) => def(o).region === r && o !== id).map(depth)), id).toBeLessThan(depth(id))
+    const from = neighbours(id) as TalentId[]
+    expect(from.length, id).toBeGreaterThan(1)
+    for (const n of from) expect(def(n).region, n).toBe(r)
+    expect(def(id).drawback, id).toBeTruthy()
+  }
 })
 
 test('every link joins two known Talents (or the centre), once', () => {
@@ -40,16 +54,11 @@ test('a few paths link neighbouring regions', () => {
   expect(crossings.length).toBeLessThanOrEqual(6)
 })
 
-test('every Talent, and every Keystone slot, has its own spot on the web', () => {
-  const spots = [
-    { name: 'centre', x: 0, y: 0 },
-    ...ids.map((id) => ({ name: id, ...webPosition(def(id).region, def(id).at) })),
-    ...REGIONS.map((r) => ({ name: `${r} keystone`, ...webPosition(r, KEYSTONE_SLOTS[r].at) })),
-  ]
+test('every Talent has its own spot on the web', () => {
+  const spots = [{ name: 'centre', x: 0, y: 0 }, ...ids.map((id) => ({ name: id, ...webPosition(def(id).region, def(id).at) }))]
   for (const [i, a] of spots.entries()) {
     for (const b of spots.slice(i + 1)) expect(Math.hypot(a.x - b.x, a.y - b.y), `${a.name} and ${b.name}`).toBeGreaterThan(0.5)
   }
-  for (const r of REGIONS) for (const id of KEYSTONE_SLOTS[r].from) expect(def(id).region, id).toBe(r)
 })
 
 test('a typical run fills about half the web, and most of it goes on finishing any one region', () => {

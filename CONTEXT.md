@@ -79,7 +79,7 @@ A one-off Job with a fixed duration and a reward that is paid once.
 _Avoid_: Task, quest, bounty
 
 **Party**:
-The Villagers sent together on an Expedition: one to three, or more with Talents.
+The Villagers sent together on an Expedition: one to three, more with Talents, or only one with the Lone Wanderer Keystone.
 _Avoid_: Team, squad, group
 
 **Explore**:

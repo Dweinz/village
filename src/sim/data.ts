@@ -235,8 +235,11 @@ export interface TalentBonus extends Bonus {
   rareYield?: number // more Rare Materials from Outposts and Ruins
   offlineCap?: number // seconds
 }
+// What a Keystone changes outright, on top of every bonus: each factor multiplies, `party` caps the Party size.
+export interface KeystoneRule { upkeep?: number; buildCost?: number; expeditionTime?: number; party?: number }
 export type WebSpot = [depth: number, lane: number]
-export interface TalentDef extends TalentBonus { name: string; desc: string; kind: TalentKind; region: TalentRegion; chapter: number; at: WebSpot }
+// drawback: a Keystone's downside, in words for the player.
+export interface TalentDef extends TalentBonus { name: string; desc: string; kind: TalentKind; region: TalentRegion; chapter: number; at: WebSpot; rule?: KeystoneRule; drawback?: string }
 export const WORLD_MAP_CHAPTER = 4 // completing Beyond the Walls opens the World Map, and with it Expeditions, Outposts and Trade Routes
 export const TALENTS = {
   // Industry: Villager speed, yields, XP, Upkeep, Injuries
@@ -260,6 +263,7 @@ export const TALENTS = {
   caution: { name: 'Caution', desc: '-20% Injury chance', kind: 'minor', region: 'industry', chapter: WORLD_MAP_CHAPTER, at: [5, 2], injuryChance: 0.2 },
   bonesetters: { name: 'Bonesetters', desc: 'Injuries heal 40% sooner, -15% Injury chance', kind: 'notable', region: 'industry', chapter: WORLD_MAP_CHAPTER, at: [6, 1], injuryTime: 0.4, injuryChance: 0.15 },
   hardy_travellers: { name: 'Hardy Travellers', desc: '+5% Expedition success', kind: 'minor', region: 'industry', chapter: WORLD_MAP_CHAPTER, at: [6, 3], expedition: 0.05 }, // path to Wayfinding
+  iron_discipline: { name: 'Iron Discipline', desc: '+30% speed everywhere', drawback: 'Upkeep is doubled', kind: 'keystone', region: 'industry', chapter: 0, at: [7, 0], speed: 0.3, rule: { upkeep: 2 } },
 
   // Wayfinding: Expeditions, exploring, Outposts, Ruins
   trailcraft: { name: 'Trailcraft', desc: 'Expeditions travel 10% faster', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [1, 0], expeditionSpeed: 0.1 },
@@ -279,6 +283,10 @@ export const TALENTS = {
   strength_in_numbers: { name: 'Strength in Numbers', desc: '+1 Villager in a Party', kind: 'notable', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [5, -1], party: 1 },
   trail_markers: { name: 'Trail Markers', desc: 'Expeditions travel 10% faster', kind: 'minor', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [5, 0], expeditionSpeed: 0.1 },
   motherlode: { name: 'Motherlode', desc: '+40% Rare Materials from Outposts and Ruins', kind: 'notable', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [5, 1], rareYield: 0.4 },
+  lone_wanderer: {
+    name: 'Lone Wanderer', desc: '+40% Expedition success, and Expeditions take half as long', drawback: 'A Party holds only 1 Villager',
+    kind: 'keystone', region: 'wayfinding', chapter: WORLD_MAP_CHAPTER, at: [7, 0], expedition: 0.4, rule: { expeditionTime: 0.5, party: 1 },
+  },
 
   // Stewardship: Gold, trade, Reputation, costs, Housing, hiring, Offline Progress cap
   coin_sense: { name: 'Coin Sense', desc: '+10% Gold from all Jobs', kind: 'minor', region: 'stewardship', chapter: 0, at: [1, 0], gold: 0.1 },
@@ -299,6 +307,10 @@ export const TALENTS = {
   good_wages: { name: 'Good Wages', desc: 'Hiring costs 15% less', kind: 'minor', region: 'stewardship', chapter: 1, at: [5, 0], hireCost: 0.15 },
   night_watch: { name: 'Night Watch', desc: '+2h Offline Progress cap', kind: 'minor', region: 'stewardship', chapter: 0, at: [5, 1], offlineCap: 2 * 3600 },
   trusted_stewards: { name: 'Trusted Stewards', desc: '+4h Offline Progress cap', kind: 'notable', region: 'stewardship', chapter: 0, at: [6, 1], offlineCap: 4 * 3600 },
+  merchant_prince: {
+    name: 'Merchant Prince', desc: 'Foreign Cities sell 50% more per load, +200% Reputation from Trade Routes', drawback: 'Buildings and upgrades cost 25% more (but no more Rare Materials)',
+    kind: 'keystone', region: 'stewardship', chapter: WORLD_MAP_CHAPTER, at: [7, 0], tradeRate: 0.5, reputation: 2, rule: { buildCost: 1.25 },
+  },
 } satisfies Record<string, TalentDef>
 export type TalentId = keyof typeof TALENTS
 // The web's paths, both ways. 'centre' is where every build starts: it isn't a Talent and is never taken.
@@ -321,15 +333,14 @@ export const TALENT_LINKS: ['centre' | TalentId, TalentId][] = [
   ['cozy_homes', 'shared_hearths'], ['ambassadors', 'road_wardens'], ['good_judge', 'good_wages'], ['master_builders', 'night_watch'],
   ['night_watch', 'trusted_stewards'],
 
+  // Keystones, at the outer end of each region
+  ['guild_training', 'iron_discipline'], ['master_craftsmen', 'iron_discipline'], ['bonesetters', 'iron_discipline'],
+  ['trail_markers', 'lone_wanderer'], ['strength_in_numbers', 'lone_wanderer'], ['motherlode', 'lone_wanderer'],
+  ['good_wages', 'merchant_prince'], ['trade_charter', 'merchant_prince'], ['trusted_stewards', 'merchant_prince'],
+
   // Paths between neighbouring regions
   ['granaries', 'shared_hearths'], ['hardy_travellers', 'strength_in_numbers'], ['road_wardens', 'tomb_robbers'],
 ]
-// Keystones (#20) will sit at the outer end of each region, linked from these Talents.
-export const KEYSTONE_SLOTS: Record<TalentRegion, { at: WebSpot; from: TalentId[] }> = {
-  industry: { at: [6, 0], from: ['guild_training', 'master_craftsmen', 'bonesetters'] },
-  wayfinding: { at: [6, 0], from: ['trail_markers', 'strength_in_numbers', 'motherlode'] },
-  stewardship: { at: [6, 0], from: ['good_wages', 'trade_charter', 'trusted_stewards'] },
-}
 // Each region fans out in its own direction from the centre; Wayfinding lies between Industry's +lanes and Stewardship's -lanes.
 export const TALENT_REGION_ANGLES: Record<TalentRegion, number> = { industry: 90, wayfinding: 210, stewardship: 330 } // degrees, counter-clockwise from +x
 /** Where a spot in a region sits on the web, in grid units: x right, y up, the centre at 0,0. */

@@ -4,7 +4,7 @@ import {
   OFFLINE_CAP, advance, assign, assignOutpost, build, buildCost, buildOutpost, demolishRefund, findJob, foreignCity, hire, hireCost, housing, maxParty,
   newGame, offlineCap, openTradeRoute, planExpedition, recoveryLeft, reroll, sendExpedition, speed, upgrade, type Game, type GameEvent,
 } from './game'
-import { rich } from './test-helpers'
+import { plain, taking } from './test-helpers'
 
 // One test per kind of Talent bonus, each with a Talent from the web that pulls that lever.
 const ids = Object.keys(TALENTS) as TalentId[]
@@ -15,9 +15,6 @@ function talentWith(key: keyof TalentBonus, where?: Workplace): TalentId {
   if (!id) throw new Error(`No Talent pulls ${key}${where ? ` at ${where}` : ''}`)
   return id
 }
-const taking = (g: Game, ...talents: TalentId[]) => { const out = structuredClone(g); out.talents = talents; return out }
-// Plenty of everything, and Villagers without Traits, so only Talents change the numbers.
-const plain = (seed = 1) => { const g = rich(newGame(seed)); for (const v of g.villagers) v.traits = []; return g }
 const explore = { kind: 'explore' } as const
 
 test('a work speed Talent speeds up every Workplace, or only the ones it names', () => {

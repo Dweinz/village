@@ -519,3 +519,14 @@ test('the Talent Tree overlay shows Talent Points and Renown, explains locked Ta
   fireEvent.click(within(tree).getByRole('button', { name: 'Close' }))
   expect(screen.queryByRole('dialog', { name: 'Talent Tree' })).toBeNull()
 })
+
+test('a Keystone\'s tooltip lists its upside and its downside', () => {
+  localStorage.setItem(SAVE_KEY, toSave(newGame(1), Date.now()))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: /^Talents/ }))
+  const tree = screen.getByRole('dialog', { name: 'Talent Tree' })
+  fireEvent.mouseEnter(within(tree).getByRole('button', { name: 'Iron Discipline, locked' }))
+  const tip = within(tree).getByRole('tooltip').textContent
+  expect(tip).toContain(TALENTS.iron_discipline.desc)
+  expect(tip).toContain(TALENTS.iron_discipline.drawback)
+})

@@ -112,6 +112,7 @@ export function TalentTree({ game, act, onClose }: { game: Game; act: Act; onClo
           <>
             <strong>{tip.name}</strong> <span className="muted small">{KIND_NAME[tip.kind]}</span>
             <p>{tip.desc}</p>
+            {tip.drawback && <p className="tt-drawback">Downside: {tip.drawback}</p>}
             {blocker ? <p className="tt-req">{blocker}</p> : <p className="tt-ok">{has(shown!) ? 'Taken' : 'Click to take'}</p>}
           </>
         ) : <span className="muted">Hover or tap a Talent. Drag to pan, scroll or pinch to zoom.</span>}
