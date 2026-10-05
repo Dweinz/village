@@ -1,31 +1,22 @@
 // The Talent Tree overlay: a pannable, zoomable web of Talents. Only reads state and dispatches (ADR 0001).
 import { useRef, useState, type PointerEvent, type WheelEvent } from 'react'
 import type { Act } from './format'
-import { TALENT_LINKS, TALENTS, type TalentDef, type TalentId, type TalentKind, type TalentRegion } from './sim/data'
+import { TALENT_LINKS, TALENTS, webPosition, type TalentDef, type TalentId, type TalentKind } from './sim/data'
 import { renownToNext, takeTalent, talentBlocker, type Game } from './sim/game'
 
-// Icons from game-icons.net (CC BY 3.0), one file per Talent id, plus centre.svg.
+// Icons from game-icons.net (CC BY 3.0), one per lever (the bonus key: speed.svg, xp.svg, …), plus centre.svg.
+// A Talent shows the icon of its first lever, so new Talents get one for free.
 const ICONS = import.meta.glob<string>('./talent-icons/*.svg', { eager: true, query: '?url', import: 'default' })
-const icon = (id: string) => ICONS[`./talent-icons/${id}.svg`]
+const icon = (key: string) => ICONS[`./talent-icons/${key}.svg`]
+const talentIcon = (t: TalentDef) => Object.keys(t).map(icon).find(Boolean)
 
-const REGION_ANGLE: Record<TalentRegion, number> = { wayfinding: -Math.PI / 2, industry: (Math.PI * 5) / 6, stewardship: Math.PI / 6 }
 const KIND_NAME: Record<TalentKind, string> = { minor: 'Minor', notable: 'Notable', keystone: 'Keystone' }
-const RING = 120 // px between rings of the web
-const SPREAD = 0.7 // radians between siblings on the first ring, narrower further out
+const UNIT = 90 // px per grid unit of the web
 
-// Each Talent sits one ring further out than the node it grows from, fanned around that node's angle.
-const POS: Record<string, { x: number; y: number; angle: number; depth: number }> = { centre: { x: 0, y: 0, angle: 0, depth: 0 } }
-for (const queue = ['centre']; queue.length;) {
-  const from = queue.shift()!
-  const p = POS[from]
-  const kids = TALENT_LINKS.flatMap(([a, b]) => (a === from ? [b] : b === from ? [a] : [])).filter((id) => !POS[id]) as TalentId[]
-  kids.forEach((id, i) => {
-    const depth = p.depth + 1
-    const angle = from === 'centre' ? REGION_ANGLE[TALENTS[id].region] : p.angle + ((i - (kids.length - 1) / 2) * SPREAD) / depth
-    POS[id] = { x: Math.cos(angle) * RING * depth, y: Math.sin(angle) * RING * depth, angle, depth }
-    queue.push(id)
-  })
-}
+// Screen positions from the sim's web grid (y up there, down on screen).
+const at = (t: TalentDef) => { const p = webPosition(t.region, t.at); return { x: p.x * UNIT, y: -p.y * UNIT } }
+const POS: Record<string, { x: number; y: number }> = { centre: { x: 0, y: 0 } }
+for (const [id, t] of Object.entries(TALENTS)) POS[id] = at(t)
 const IDS = Object.keys(TALENTS) as TalentId[]
 
 export function TalentTree({ game, act, onClose }: { game: Game; act: Act; onClose: () => void }) {
@@ -110,7 +101,7 @@ export function TalentTree({ game, act, onClose }: { game: Game; act: Act; onClo
                 onFocus={() => setShown(id)}
                 onClick={() => click(id)}
               >
-                <i style={{ maskImage: `url("${icon(id)}")` }} />
+                <i style={{ maskImage: `url("${talentIcon(t)}")` }} />
               </button>
             )
           })}
