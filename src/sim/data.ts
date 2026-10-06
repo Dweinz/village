@@ -17,7 +17,7 @@ export const RES_NAME: Record<Res, string> = {
   gold: 'Gold', wood: 'Wood', stone: 'Stone', food: 'Food', ore: 'Ore', crystal: 'Crystal', spice: 'Spice', silk: 'Silk',
 }
 
-export type BuildingType = 'townhall' | 'farm' | 'lumbercamp' | 'house' | 'tavern' | 'quarry' | 'mine' | 'guildhall'
+export type BuildingType = 'townhall' | 'farm' | 'lumbercamp' | 'house' | 'tavern' | 'quarry' | 'mine' | 'guildhall' | 'marketplace'
 
 // Where a Villager can work something that repeats each cycle: a Building, an Outpost on a Resource Deposit, or a Trade Route.
 export type Workplace = BuildingType | 'outpost' | 'trade'
@@ -91,6 +91,17 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   quarry: {
     name: 'Quarry', cost: { wood: 40, gold: 30 }, slots: 2, chapter: 1, rareUpgrade: { crystal: 4 },
     jobs: [prod('cut', 'Cut Stone', 15, { str: 1, end: 1 }, { stone: 3 }, 3)],
+  },
+  marketplace: {
+    name: 'Marketplace', cost: { wood: 60, stone: 20, gold: 60 }, slots: 1, unique: true, chapter: 1, rareUpgrade: { silk: 5 },
+    jobs: [
+      // Each swap loses a quarter or so to the market, so trading is for balancing the Stockpile, not for free profit.
+      prod('wood_for_stone', 'Swap Wood for Stone', 20, { cha: 1, int: 1 }, { stone: 6 }, 3, { cost: { wood: 8 } }),
+      prod('stone_for_wood', 'Swap Stone for Wood', 20, { cha: 1, int: 1 }, { wood: 6 }, 3, { cost: { stone: 8 } }),
+      prod('food_for_gold', 'Sell Food', 20, { cha: 1 }, { gold: 5 }, 3, { cost: { food: 8 } }),
+      prod('ore_for_gold', 'Sell Ore', 20, { cha: 1 }, { gold: 7 }, 3, { cost: { ore: 4 } }),
+      contract('rare_goods', 'Buy Rare Goods', 2, 180, { cha: 1, int: 1 }, { crystal: 1, spice: 1, silk: 1 }, 40, { gold: 300 }),
+    ],
   },
   mine: {
     name: 'Mine', cost: { wood: 60, stone: 40 }, slots: 2, chapter: 2, rareUpgrade: { crystal: 6 },

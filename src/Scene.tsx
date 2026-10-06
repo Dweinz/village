@@ -98,6 +98,18 @@ function Building({ type, level }: { type: BuildingType; level: number }) {
           <Part p={[0.7, 0.2, 1]}><boxGeometry args={[0.4, 0.25, 0.3]} /><M c="#c27b3f" /></Part>
         </>
       )
+    case 'marketplace':
+      return (
+        <>
+          <Part p={[0, 0.5, 0]}><boxGeometry args={[1.8, 0.1, 1.2]} /><M c="#a67c52" /></Part>
+          {[-0.8, 0.8].map((x) => (
+            <Part key={x} p={[x, 0.55, 0.5]}><cylinderGeometry args={[0.06, 0.06, 1.1, 6]} /><M c="#6b4a2f" /></Part>
+          ))}
+          <Part p={[0, 1.15, 0.3]}><boxGeometry args={[2, 0.12, 1.2]} /><M c="#d9534f" /></Part>
+          <Part p={[-0.4, 0.7, -0.1]}><boxGeometry args={[0.4, 0.3, 0.4]} /><M c="#e2c044" /></Part>
+          <Part p={[0.4, 0.7, -0.1]}><sphereGeometry args={[0.22, 8, 8]} /><M c="#9cbf4a" /></Part>
+        </>
+      )
     case 'guildhall':
       return (
         <>
