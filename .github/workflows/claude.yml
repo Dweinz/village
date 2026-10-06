@@ -1,0 +1,55 @@
+name: Claude
+
+# Mention @claude in an issue or comment (or add the "claude" label) and Claude
+# implements it on a claude/... branch, then replies with a link to open the PR.
+# Asking to discuss an idea goes to Göran (the goran agent), and asking to make
+# an issue goes to issue-writer (.claude/agents/); neither changes code.
+# Only users with write access to the repo can trigger it.
+on:
+  issues:
+    types: [opened, labeled]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'claude') ||
+      (github.event_name == 'issues' && github.event.action == 'opened' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude'))) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read # lets Claude read CI results on its PRs
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # code-review diffs against main
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ github.token }} # for the gh issue commands below
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Matt Pocock's engineering skills (/tdd, /code-review, /diagnosing-bugs, ...)
+          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
+          plugins: mattpocock-skills@claude-plugins-official
+          # The repo is public, so run logs are too: keep Claude's full output out of them.
+          show_full_output: false
+          claude_args: |
+            --allowedTools "Skill,Agent,Task,Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(npx vitest:*),Bash(npx tsc:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(git rev-parse:*),Bash(git merge-base:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh label list:*)"
+            --append-system-prompt "You are running unattended in GitHub Actions: nobody can answer questions during this run, and your tracking comment is the only thing the user sees. Reply in the language the request is written in. First decide what is being asked. To discuss, explore or brainstorm an idea, delegate to the goran agent (Göran), post its reply and change no code. To turn an idea or report into an issue, delegate to the issue-writer agent and change no code. Otherwise treat it as an implementation or review request as below. Whenever a skill tells you to confirm, agree or ask the user (for example the seams in the tdd skill), decide yourself using the issue as the spec and record the decision in your tracking comment. Only if the issue is ambiguous in a way that changes what you would build, post your questions in the tracking comment and stop without changing code; the user will reply with @claude. Skills are mandatory, not optional: load them with the Skill tool (use ToolSearch first if Skill is not loaded) rather than following them from memory. To implement an issue, your first action is the Skill tool with implement-issue; whenever it names diagnosing-bugs, tdd or code-review, invoke that skill with the Skill tool too, even for small changes. For a review request, invoke code-review. Run checks directly as single commands (npm test, npm run build, npx vitest run <file>, npx tsc --noEmit); they are allowed, unlike ad-hoc python or shell scripts, so use the Edit tool for file changes. The implement-issue report step is your final tracking comment; list the skills you invoked."
