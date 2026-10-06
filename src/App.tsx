@@ -9,12 +9,12 @@ import {
 } from './sim/data'
 import {
   CHAPTERS, REROLL_COST, advance, assign, build, buildCost, canAfford, canSpecialize, currentJob, demolish, demolishRefund, jobOf, plotHousing, hire,
-  hireCost, housing, jobsFor, maxLevel, newGame, offlineCap, raise, reroll, slots, specialize, unassign, upgrade, workers, worldMapUnlocked, xpToNext,
+  hireCost, housing, jobsFor, maxLevel, newGame, offlineCap, raise, renownEarned, renownToNext, reroll, slots, specialize, unassign, upgrade, workers, worldMapUnlocked, xpToNext,
   type Game, type GameEvent, type Villager,
 } from './sim/game'
 import { SAVE_KEY, fromSave, toSave } from './sim/save'
 
-interface Report { seconds: number; capped: boolean; before: Game['stock']; after: Game['stock']; events: GameEvent[] }
+interface Report { seconds: number; capped: boolean; before: Game['stock']; after: Game['stock']; events: GameEvent[]; renown: number; talentPoints: number }
 
 function boot(): { game: Game; report: Report | null } {
   let text = null
@@ -27,7 +27,8 @@ function boot(): { game: Game; report: Report | null } {
   if (seconds < 60) return { game: advance(saved.game, Math.max(0, seconds)), report: null }
   const events: GameEvent[] = []
   const game = advance(saved.game, seconds, events)
-  return { game, report: { seconds, capped: away > cap, before: saved.game.stock, after: game.stock, events } }
+  const renown = Math.floor(renownEarned(game) - renownEarned(saved.game))
+  return { game, report: { seconds, capped: away > cap, before: saved.game.stock, after: game.stock, events, renown, talentPoints: game.talentPoints - saved.game.talentPoints } }
 }
 
 const Cost = ({ bag, game }: { bag: Bag; game?: Game }) => (
@@ -53,7 +54,7 @@ function describe(e: GameEvent) {
     case 'traded': return `🐪 ${e.name} traded at ${e.city}`
     case 'reputationTier': return `🤝 Reputation with ${e.city} rose to ${REPUTATION_TIERS[e.tier].name}`
     case 'siteRevealed': return `🌫️ ${e.party.join(', ')} found a ${SITE_KINDS[e.site].name} at distance ${e.distance}`
-    case 'renownRank': return `👑 Renown rank ${e.rank}: you earned a Talent Point`
+    case 'renownRank': return `👑 Renown rank ${e.rank}: Talent Point earned`
   }
 }
 
@@ -127,6 +128,13 @@ function TopBar({ game, onReset, view, onView, onTalents }: { game: Game; onRese
         ? <button className="view" onClick={() => onView('settlement')}>Settlement</button>
         : <button className="view" onClick={() => onView('map')}>World Map</button>)}
       <button className="view" onClick={onTalents}>Talents{game.talentPoints > 0 && <span className="pip"> {game.talentPoints}</span>}</button>
+      <div className="renown">
+        <span className="small">👑 Renown {game.renownRank}</span>
+        <div className="bar xp" role="progressbar" aria-label={`Renown rank ${game.renownRank}`} aria-valuemin={0} aria-valuemax={renownToNext(game.renownRank)} aria-valuenow={Math.floor(game.renown)} title={`Renown ${Math.floor(game.renown)} / ${renownToNext(game.renownRank)}`}>
+          <i style={{ width: `${(game.renown / renownToNext(game.renownRank)) * 100}%` }} />
+        </div>
+        {game.talentPoints > 0 && <button className="badge" onClick={onTalents} aria-label={`${game.talentPoints} unspent Talent Point${game.talentPoints === 1 ? '' : 's'}`}>{game.talentPoints}</button>}
+      </div>
       {RESOURCES.filter((r) => !isRare(r) || worldMapUnlocked(game) || game.stock[r] > 0) /* Rare Materials once there's a World Map */.map((r) => <span key={r} className="res" title={RES_NAME[r]} aria-label={`${RES_NAME[r]} ${fmt(game.stock[r])}`}>{RES_ICON[r]} {fmt(game.stock[r])}</span>)}
       <span className="res" title="Villagers / Housing">👥 {game.villagers.length}/{housing(game)}</span>
       {game.starving && <span className="badge warn">Starving</span>}
@@ -303,7 +311,8 @@ function tradeTotals(events: GameEvent[]) {
 
 function ReportModal({ report, onClose }: { report: Report; onClose: () => void }) {
   const gained = RESOURCES.map((r) => [r, report.after[r] - report.before[r]] as const).filter(([, n]) => Math.abs(n) >= 1)
-  const lines = [...new Set(report.events.filter((e) => e.kind !== 'traded').map(describe))]
+  const lines = [...new Set(report.events.filter((e) => e.kind !== 'traded' && e.kind !== 'renownRank').map(describe))] // Renown ranks are summed up below
+  if (report.renown > 0) lines.push(`👑 Renown +${fmt(report.renown)}${report.talentPoints > 0 ? `, ${report.talentPoints} Talent Point${report.talentPoints === 1 ? '' : 's'} earned` : ''}`)
   const trade = tradeTotals(report.events)
   if (trade) lines.push(`🐪 Trade Routes sent ${costText(trade.gave)}, received ${costText(trade.got)}`)
   return (

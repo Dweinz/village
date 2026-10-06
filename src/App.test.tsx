@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
-import { CHAPTERS, advance, assign, assignOutpost, build, buildOutpost, foreignCity, newGame, nextReputationTier, openTradeRoute, ruinLevel, sendExpedition, type GameEvent } from './sim/game'
+import { CHAPTERS, advance, assign, assignOutpost, build, buildOutpost, foreignCity, newGame, nextReputationTier, openTradeRoute, renownToNext, ruinLevel, sendExpedition, type GameEvent } from './sim/game'
 import { FOREIGN_CITIES, MAX_BUILDING_LEVEL, REPUTATION_TIERS, RES_NAME, SITE_KINDS, TALENTS, WORLD_MAP_CHAPTER } from './sim/data'
 import { SAVE_KEY, toSave } from './sim/save'
 import { costText } from './format'
@@ -529,4 +529,57 @@ test('a Keystone\'s tooltip lists its upside and its downside', () => {
   const tip = within(tree).getByRole('tooltip').textContent
   expect(tip).toContain(TALENTS.iron_discipline.desc)
   expect(tip).toContain(TALENTS.iron_discipline.drawback)
+})
+
+test('the Respec button shows its Gold cost, asks to confirm, and then clears the Talents', () => {
+  const game = newGame(1)
+  Object.assign(game, { talents: ['diligence'], respecs: 1 })
+  game.stock.gold = 500
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: /^Talents/ }))
+  const tree = screen.getByRole('dialog', { name: 'Talent Tree' })
+  const respec = within(tree).getByRole('button', { name: /^Respec/ })
+  expect(respec.textContent).toContain('200')
+
+  fireEvent.click(respec) // declined
+  expect(within(tree).getByRole('button', { name: 'Diligence, taken' })).toBeTruthy()
+  fireEvent.click(respec)
+  expect(within(tree).getByText('1 Talent Point')).toBeTruthy()
+  expect(within(tree).queryByRole('button', { name: 'Diligence, taken' })).toBeNull()
+  expect(amount('Gold')).toBe('300')
+  expect(within(tree).getByRole('button', { name: /^Respec/ }).textContent).toContain('400')
+  expect(confirm).toHaveBeenCalledTimes(2)
+})
+
+test('the HUD shows Renown rank and progress, and its badge for unspent Talent Points opens the Talent Tree', () => {
+  const game = newGame(1)
+  Object.assign(game, { renownRank: 2, renown: 5, talentPoints: 3 })
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  const hud = screen.getByRole('progressbar', { name: 'Renown rank 2' })
+  expect(Number(hud.getAttribute('aria-valuenow'))).toBe(5)
+  fireEvent.click(screen.getByRole('button', { name: '3 unspent Talent Points' }))
+  expect(screen.getByRole('dialog', { name: 'Talent Tree' })).toBeTruthy()
+})
+
+test('no badge shows without unspent Talent Points, and a Renown rank-up alerts that one was earned', () => {
+  const game = assign(newGame(1), 1, 2, 'chop')
+  game.renown = renownToNext(0) - 0.01
+  localStorage.setItem(SAVE_KEY, toSave(game, Date.now()))
+  render(<App />)
+  expect(screen.queryByRole('button', { name: /unspent Talent Point/ })).toBeNull()
+  for (let i = 0; i < 240 && !screen.queryByText(/Talent Point earned/); i++) passTime(250) // alerts fade after 4s, so catch it
+  expect(screen.getByText(/Talent Point earned/)).toBeTruthy()
+  expect(screen.getByRole('button', { name: '1 unspent Talent Point' })).toBeTruthy()
+})
+
+test('the Report lists the Renown gained and the Talent Points earned while away', () => {
+  const twoHoursAgo = Date.now() - 2 * 3600_000
+  localStorage.setItem(SAVE_KEY, toSave(assign(newGame(1), 1, 2, 'chop'), twoHoursAgo))
+  render(<App />)
+  const report = screen.getByRole('dialog', { name: 'While you were away' })
+  expect(within(report).getByText(/Renown \+\d+/)).toBeTruthy()
+  expect(within(report).getByText(/Talent Points? earned/)).toBeTruthy()
 })

@@ -37,6 +37,7 @@ export const MIGRATIONS: Migration[] = [
     plots: game.plots.map((p: { type: BuildingType; level: number; free?: true } | null, i: number) =>
       p && { type: p.type, level: p.level, paid: listPricePaid(p.type, p.level, !!p.free || i === 0) }),
   }),
+  (game) => ({ ...game, respecs: 0 }), // v10 → v11: the Talent Tree respec counter, from zero
 ]
 
 // The Gold and Materials paid for a Building before any Talent changed its costs (v9 → v10).

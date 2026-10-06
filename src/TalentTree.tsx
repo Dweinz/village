@@ -2,7 +2,7 @@
 import { useRef, useState, type PointerEvent, type WheelEvent } from 'react'
 import type { Act } from './format'
 import { TALENT_LINKS, TALENTS, webPosition, type TalentDef, type TalentId, type TalentKind } from './sim/data'
-import { renownToNext, takeTalent, talentBlocker, type Game } from './sim/game'
+import { renownToNext, respecCost, respecTalents, takeTalent, talentBlocker, type Game } from './sim/game'
 
 // Icons from game-icons.net (CC BY 3.0), one per lever (the bonus key: speed.svg, xp.svg, …), plus centre.svg.
 // A Talent shows the icon of its first lever, so new Talents get one for free.
@@ -69,6 +69,7 @@ export function TalentTree({ game, act, onClose }: { game: Game; act: Act; onClo
 
   const points = game.talentPoints
   const toNext = renownToNext(game.renownRank)
+  const cost = respecCost(game)
   const tip: TalentDef | null = shown && TALENTS[shown]
   const blocker = shown && !has(shown) ? talentBlocker(game, shown) : undefined
   return (
@@ -78,7 +79,8 @@ export function TalentTree({ game, act, onClose }: { game: Game; act: Act; onClo
         <span className="tt-points">{points} Talent Point{points === 1 ? '' : 's'}</span>
         <span className="muted small">Renown rank {game.renownRank}</span>
         <div className="bar xp" title={`Renown ${Math.floor(game.renown)} / ${toNext}`}><i style={{ width: `${(game.renown / toNext) * 100}%` }} /></div>
-        <button className="ghost" onClick={onClose} aria-label="Close" autoFocus>✕</button>
+        <button className="respec" disabled={!game.talents.length} onClick={() => confirm(`Respec? Every Talent is cleared and its points come back, for ${cost} Gold.`) && act(respecTalents)}>Respec 🪙 {cost}</button>
+        <button className="ghost close" onClick={onClose} aria-label="Close" autoFocus>✕</button>
       </header>
       <div className="tt-view" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onPointerLeave={onPointerUp} onWheel={onWheel}>
         <div className="tt-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
