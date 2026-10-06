@@ -3,7 +3,7 @@ import {
   ATTRS, BUILDINGS, EXPEDITION_ATTRS, EXPEDITION_BASE_CHANCE, EXPEDITION_CHANCE_PER_DISTANCE, EXPEDITION_CHANCE_PER_POINT,
   EXPEDITION_CHANCE_RANGE, EXPEDITION_FOOD_PER_MEMBER_DISTANCE, EXPEDITION_GOLD_PER_DISTANCE, EXPEDITION_MAX_PARTY,
   EXPEDITION_SECONDS_PER_DISTANCE, EXPEDITION_XP_PER_DISTANCE, INJURY_CHANCE, INJURY_SECONDS, MAX_BUILDING_LEVEL, RECRUIT_POOL, NAMES, OUTPOST_COST, OUTPOST_JOB, OUTPOST_SLOTS, OUTPOST_YIELD, RES_NAME,
-  FOREIGN_CITIES, RENOWN_BASE, RENOWN_GROWTH, RENOWN_PER_REPUTATION_TIER, RENOWN_PER_RUIN_CLEARED, RENOWN_PER_SITE_REVEALED, REPUTATION_PER_CYCLE, REPUTATION_TIERS, RUIN_BASE_CHANCE, RUIN_INJURY_CHANCE, RUIN_LEVEL_BASE, RUIN_MAX_CHANCE, RUIN_REWARD_PER_DISTANCE, RUIN_XP_PER_DISTANCE, RARE_MATERIALS, SITE_REVEAL_DISTANCE, SPECS, isRare, SPEC_LEVEL, TALENT_LINKS, TALENTS, TRADE_JOB, TRAITS, WORLD_MAP_CHAPTER,
+  FOREIGN_CITIES, RESPEC_COST, RENOWN_BASE, RENOWN_GROWTH, RENOWN_PER_REPUTATION_TIER, RENOWN_PER_RUIN_CLEARED, RENOWN_PER_SITE_REVEALED, REPUTATION_PER_CYCLE, REPUTATION_TIERS, RUIN_BASE_CHANCE, RUIN_INJURY_CHANCE, RUIN_LEVEL_BASE, RUIN_MAX_CHANCE, RUIN_REWARD_PER_DISTANCE, RUIN_XP_PER_DISTANCE, RARE_MATERIALS, SITE_REVEAL_DISTANCE, SPECS, isRare, SPEC_LEVEL, TALENT_LINKS, TALENTS, TRADE_JOB, TRAITS, WORLD_MAP_CHAPTER,
   TRAIT_IDS, UPGRADE_SCALE, type Attr, type Bag, type Bonus, type BuildingType, type ForeignCityDef, type JobDef, type KeystoneRule, type Res, type SpecId, type TalentBonus, type TalentDef, type TalentId, type TraitId, type Workplace,
 } from './data'
 import { mulberry32 } from './random'
@@ -65,6 +65,7 @@ export interface Game {
   renownRank: number
   talentPoints: number // unspent
   talents: TalentId[] // taken, in the order taken
+  respecs: number // Talent Tree respecs so far; resets on Prestige along with the Talents (ADR 0003)
 }
 
 export type GameEvent =
@@ -91,7 +92,6 @@ export const offlineCap = (g: Game) => OFFLINE_CAP + talentBonus(g, 'offlineCap'
 export const TAVERN_REFRESH = 300
 export const REROLL_COST = 20
 export const PLOT_COUNT = 9
-
 // --- Chapters ---------------------------------------------------------------
 
 export interface Objective { id: string; text: string; check: (g: Game) => boolean }
@@ -196,6 +196,9 @@ export const xpToNext = (level: number) => Math.round(10 * level ** 1.6)
 /** Renown needed to climb from `rank` to the next one. */
 export const renownToNext = (rank: number) => Math.round(RENOWN_BASE * (rank + 1) ** RENOWN_GROWTH)
 export const hireCost = (g: Game) => Math.round(50 * 1.5 ** Math.max(0, g.villagers.length - 3) * discount(g, 'hireCost'))
+/** All the Renown ever earned, across ranks. */
+export const renownEarned = (g: Game) => Array.from({ length: g.renownRank }, (_, r) => renownToNext(r)).reduce((a, b) => a + b, g.renown)
+
 /**
  * What it costs to raise a Building from `level` (0 = building it) to the next, after building cost Talents and Keystones;
  * the last upgrade also costs Rare Materials, which no Talent changes.
@@ -313,7 +316,7 @@ export function newGame(seed = Date.now()): Game {
     time: 0, seed, stock: { gold: 30, wood: 20, stone: 0, food: 30, ore: 0, crystal: 0, spice: 0, silk: 0 },
     plots: Array(PLOT_COUNT).fill(null), villagers: [], recruits: [], tavernRefreshAt: 0,
     chapter: 0, done: [], starving: false, nextId: 1, worldMap: withReputation(withMaterials(generateWorldMap(seed))), expeditions: [],
-    renown: 0, renownRank: 0, talentPoints: 0, talents: [],
+    renown: 0, renownRank: 0, talentPoints: 0, talents: [], respecs: 0,
   }
   g.plots[0] = { type: 'townhall', level: 1, paid: {} }
   g.plots[1] = { type: 'farm', level: 1, paid: {} } // the starting Buildings come free
@@ -737,4 +740,17 @@ export const takeTalent = action((g, id: TalentId) => {
   if (reason) throw new Error(reason)
   g.talentPoints--
   g.talents.push(id)
+})
+
+/** The Gold a respec costs: 100, doubled for every respec before it. */
+export const respecCost = (g: Game) => RESPEC_COST * 2 ** g.respecs
+
+/** Clears every taken Talent and gives all their points back, for Gold. */
+export const respecTalents = action((g) => {
+  const cost = respecCost(g)
+  if (g.stock.gold < cost) throw new Error(`A respec costs ${cost} Gold`)
+  g.stock.gold -= cost
+  g.talentPoints += g.talents.length
+  g.talents = []
+  g.respecs++
 })

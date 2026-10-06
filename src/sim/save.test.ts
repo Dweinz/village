@@ -140,3 +140,7 @@ test('an old save starts at Renown 0, with no Talent Points and no Talents', () 
   const g = fromSave(v1Text)!.game
   expect([g.renown, g.renownRank, g.talentPoints, g.talents]).toEqual([0, 0, 0, []])
 })
+
+test('an old save starts with no respecs', () => {
+  expect(fromSave(v1Text)!.game.respecs).toBe(0)
+})

@@ -127,7 +127,11 @@ button.wide { width: 100%; margin-top: 8px; }
 .talents .muted { color: #b3a68c; }
 .talents-head { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid #5a5244; }
 .talents-head .bar { flex: 0 1 140px; background: rgba(255, 255, 255, 0.1); }
-.talents-head button { margin-left: auto; color: #e8cf8f; }
+.talents-head button { color: #e8cf8f; }
+.talents-head .respec { margin-left: auto; }
+.renown { display: flex; align-items: center; gap: 6px; }
+.renown .bar { width: 70px; margin: 0; }
+.renown .badge { background: #e8b84b; color: #2a2112; border: 0; cursor: pointer; }
 .tt-points { font-weight: 700; color: #ffe08a; }
 .tt-view { position: relative; overflow: hidden; touch-action: none; cursor: grab; }
 .tt-world { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }

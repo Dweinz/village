@@ -2,8 +2,8 @@ import { expect, test } from 'vitest'
 import {
   EXPEDITION_XP_PER_DISTANCE, RENOWN_PER_REPUTATION_TIER, RENOWN_PER_RUIN_CLEARED, RENOWN_PER_SITE_REVEALED, REPUTATION_TIERS, TALENT_LINKS, TALENTS, TRADE_JOB, type Res, type TalentId,
 } from './data'
-import { advance, assign, build, findJob, foreignCity, newGame, openTradeRoute, planExpedition, speed, renownToNext, ruinXp, sendExpedition, takeTalent, type Game, type GameEvent } from './game'
-import { rich } from './test-helpers'
+import { advance, assign, build, findJob, foreignCity, newGame, openTradeRoute, planExpedition, speed, renownToNext, respecCost, respecTalents, ruinXp, sendExpedition, takeTalent, type Game, type GameEvent } from './game'
+import { rich, taking } from './test-helpers'
 
 // All the Renown ever earned, across ranks.
 const totalRenown = (g: Game) => Array.from({ length: g.renownRank }, (_, r) => renownToNext(r)).reduce((a, b) => a + b, g.renown)
@@ -159,4 +159,29 @@ test('on a Trade Route, speed and trade Talents add together too', () => {
   const base = speed(g, v, 'trade', TRADE_JOB)
   g.talents = ['diligence', 'haggling'] // +5% everywhere, +15% on Trade Routes
   expect(speed(g, v, 'trade', TRADE_JOB)).toBeCloseTo(base * 1.2, 6)
+})
+
+test('a respec costs 100 Gold doubled for every respec before it, clears the Talents and gives the points back', () => {
+  const g = taking(newGame(1), 'diligence', 'haggling')
+  g.talentPoints = 1
+  g.stock.gold = 1000
+  expect(respecCost(g)).toBe(100)
+  const once = respecTalents(g)
+  expect(once.stock.gold).toBe(900)
+  expect(once.talents).toEqual([])
+  expect(once.talentPoints).toBe(3)
+  expect(once.respecs).toBe(1)
+  expect(respecCost(once)).toBe(200)
+  expect(respecTalents(once).stock.gold).toBe(700)
+})
+
+test('a respec fails when the player cannot afford it, and its bonuses stop at once when it works', () => {
+  const g = taking(newGame(1), 'diligence')
+  g.villagers[0].traits = []
+  g.stock.gold = 99
+  expect(() => respecTalents(g)).toThrow(/100 Gold/)
+  g.stock.gold = 100
+  const v = g.villagers[0]
+  const job = findJob('lumbercamp', 'chop')
+  expect(speed(respecTalents(g), v, 'lumbercamp', job)).toBeLessThan(speed(g, v, 'lumbercamp', job))
 })

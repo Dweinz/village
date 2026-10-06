@@ -201,6 +201,8 @@ export const REPUTATION_TIERS = [
 ] as const
 export const TRADE_JOB: JobDef = { id: 'trade', name: 'Trade Route', kind: 'production', minLevel: 1, duration: 30, attrs: { cha: 1 }, yields: {}, xp: 3 }
 
+export const RESPEC_COST = 100 // Gold for the first Talent Tree respec, doubled for every one after
+
 // Renown: the player's town-wide XP. Each rank costs RENOWN_BASE × (rank + 1)^RENOWN_GROWTH and grants a Talent Point.
 export const RENOWN_BASE = 250
 export const RENOWN_GROWTH = 1.6
