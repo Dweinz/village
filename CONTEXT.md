@@ -165,7 +165,7 @@ A node in the Talent Tree, taken all-or-nothing with one Talent Point once it co
 _Avoid_: Skill, perk (reserved for Traits), upgrade
 
 **Talent Point**:
-The currency spent on Talents, granted per Renown rank and per completed Chapter. All of them come back on a respec, which costs Gold.
+The currency spent on Talents, granted per Renown rank and per completed Chapter. All of them come back on a respec, which costs 100 Gold, doubling with each respec this run (the count resets on Prestige).
 _Avoid_: Skill point, Legacy (reserved for Prestige)
 
 **Keystone**:
