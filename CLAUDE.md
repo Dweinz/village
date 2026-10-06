@@ -22,3 +22,7 @@ Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/age
 ### Task tracing
 
 After implementing a ticket (or when asked what was done), write an evidence-backed trace with the `trace-task` skill in `.claude/skills/trace-task/`. Reports go to `.ai/reports/` (gitignored by default). Other agents can follow its `SKILL.md` directly.
+
+### @claude on GitHub
+
+Mention `@claude` in an issue or comment (write access required). Asking to discuss an idea goes to Göran (`.claude/agents/goran.md`), asking to make an issue goes to `issue-writer`, and anything else is implemented with the `implement-issue` skill on a `claude/...` branch.
