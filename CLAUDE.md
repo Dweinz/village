@@ -25,4 +25,4 @@ After implementing a ticket (or when asked what was done), write an evidence-bac
 
 ### @claude on GitHub
 
-Mention `@claude` in an issue or comment (write access required). Asking to discuss an idea goes to Göran (`.claude/agents/goran.md`), asking to make an issue goes to `issue-writer`, and anything else is implemented with the `implement-issue` skill on a `claude/...` branch.
+Mention `@claude` in an issue or comment (write access required). Asking to discuss an idea goes to Göran (`.claude/agents/goran.md`), asking to make an issue goes to `issue-writer` (Lapp-Janne), and anything else is implemented by Knegar-Janne (Claude itself) with the `implement-issue` skill on a `claude/...` branch. Start a comment with `@claude Göran`, `@claude Lapp-Janne` or `@claude Knegar-Janne` to pick who answers.

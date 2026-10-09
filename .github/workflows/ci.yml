@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch: # started by claude.yml: PRs opened with GITHUB_TOKEN trigger no workflows
   pull_request:
   push:
     branches: [main]
