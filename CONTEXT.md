@@ -18,6 +18,10 @@ _Avoid_: Tile, lot, grid cell
 A levelled structure on a Plot that offers Jobs and Slots.
 _Avoid_: Structure, facility
 
+**Marketplace**:
+A unique Building, unlocked in Chapter 1, where a Villager swaps one Material for another each cycle at a fixed loss to the market, or sells Food and Ore for Gold. It trades inside the Stockpile, unlike a Trade Route, which deals with a Foreign City.
+_Avoid_: Market, shop, exchange
+
 **Demolish**:
 To remove a Building from its Plot, freeing the Plot and refunding half of what the player paid for it (nothing for the starting Farm and Lumber Camp's level 1, and no Rare Materials). The Town Hall can't be demolished.
 _Avoid_: Destroy, sell, raze, remove
