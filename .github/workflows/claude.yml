@@ -1,9 +1,12 @@
 name: Claude
 
-# Mention @claude in an issue or comment (or add the "claude" label) and Claude
-# implements it on a claude/... branch, then replies with a link to open the PR.
-# Asking to discuss an idea goes to Göran (the goran agent), and asking to make
-# an issue goes to issue-writer (.claude/agents/); neither changes code.
+# Mention @claude in an issue or comment (or add the "claude" label). Asked to
+# build, Claude implements it on a claude/... branch and the last step opens a PR
+# (Closes #N) and starts CI on it.
+# Claude only builds when explicitly asked ("implement", "bygg", or the claude label).
+# Asking to make an issue goes to issue-writer; anything else, like a new idea,
+# goes to Göran (.claude/agents/goran.md). Neither of them changes code. Issues are
+# written by Lapp-Janne (issue-writer); building and fixing is Knegar-Janne (Claude itself).
 # Only users with write access to the repo can trigger it.
 on:
   issues:
@@ -30,7 +33,7 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-      actions: read # lets Claude read CI results on its PRs
+      actions: write # read CI results; start CI after opening a PR
     steps:
       - uses: actions/checkout@v5
         with:
@@ -41,6 +44,7 @@ jobs:
           cache: npm
       - run: npm ci
       - uses: anthropics/claude-code-action@v1
+        id: claude
         env:
           GH_TOKEN: ${{ github.token }} # for the gh issue commands below
         with:
@@ -51,5 +55,19 @@ jobs:
           # The repo is public, so run logs are too: keep Claude's full output out of them.
           show_full_output: false
           claude_args: |
-            --allowedTools "Skill,Agent,Task,Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(npx vitest:*),Bash(npx tsc:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(git rev-parse:*),Bash(git merge-base:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh label list:*)"
-            --append-system-prompt "You are running unattended in GitHub Actions: nobody can answer questions during this run, and your tracking comment is the only thing the user sees. Reply in the language the request is written in. First decide what is being asked. To discuss, explore or brainstorm an idea, delegate to the goran agent (Göran), post its reply and change no code. To turn an idea or report into an issue, delegate to the issue-writer agent and change no code. Otherwise treat it as an implementation or review request as below. Whenever a skill tells you to confirm, agree or ask the user (for example the seams in the tdd skill), decide yourself using the issue as the spec and record the decision in your tracking comment. Only if the issue is ambiguous in a way that changes what you would build, post your questions in the tracking comment and stop without changing code; the user will reply with @claude. Skills are mandatory, not optional: load them with the Skill tool (use ToolSearch first if Skill is not loaded) rather than following them from memory. To implement an issue, your first action is the Skill tool with implement-issue; whenever it names diagnosing-bugs, tdd or code-review, invoke that skill with the Skill tool too, even for small changes. For a review request, invoke code-review. Run checks directly as single commands (npm test, npm run build, npx vitest run <file>, npx tsc --noEmit); they are allowed, unlike ad-hoc python or shell scripts, so use the Edit tool for file changes. The implement-issue report step is your final tracking comment; list the skills you invoked."
+            --allowedTools "Skill,Agent,Task,Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(npx vitest:*),Bash(npx tsc:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(git rev-parse:*),Bash(git merge-base:*),Bash(git fetch:*),Bash(git checkout:*),Bash(git cherry-pick:*),Bash(git merge:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh label list:*)"
+            --append-system-prompt "You are running unattended in GitHub Actions: nobody can answer questions during this run, and your tracking comment is the only thing the user sees. Reply in the language the request is written in. If the comment starts with an agent name right after @claude, that name decides who handles it, overriding the rules below: Göran goes to the goran agent, Lapp-Janne to the issue-writer agent, Knegar-Janne means you build, fix or review it yourself. Otherwise, first decide what is being asked, and only build when explicitly told to. Implement only if the triggering comment explicitly asks for it (for example implement, build, fix it, implementera, bygg, fixa) or the claude label was added; for review requests, review. If it asks to turn something into an issue (for example make this an issue, gör ett ärende), delegate to the issue-writer agent (Lapp-Janne): post its reply and change no code. When you implement, fix or review yourself, you are Knegar-Janne: introduce yourself by that name in your tracking comment. Everything else, including a new issue that describes an idea, wish or feature (for example jag skulle vilja, I would like, what if) without explicitly asking to build it, goes to the goran agent (Göran): post his reply and change no code. When in doubt, use Göran. Run agents in the foreground (never run_in_background) and wait for their reply: this run ends when your turn ends and kills any background agent, so post the reply in your tracking comment before you finish. Whenever a skill tells you to confirm, agree or ask the user (for example the seams in the tdd skill), decide yourself using the issue as the spec and record the decision in your tracking comment. Only if the issue is ambiguous in a way that changes what you would build, post your questions in the tracking comment and stop without changing code; the user will reply with @claude. Skills are mandatory, not optional: load them with the Skill tool (use ToolSearch first if Skill is not loaded) rather than following them from memory. To implement an issue, your first action is the Skill tool with implement-issue; whenever it names diagnosing-bugs, tdd or code-review, invoke that skill with the Skill tool too, even for small changes. For a review request, invoke code-review. Run checks directly as single commands (npm test, npm run build, npx vitest run <file>, npx tsc --noEmit); they are allowed, unlike ad-hoc python or shell scripts, so use the Edit tool for file changes. The implement-issue report step is your final tracking comment; list the skills you invoked. After you finish, a later workflow step opens a PR from your branch that closes the issue and starts CI on it, so never tell the user to open a PR or to run commands. Run every shell command on its own, without pipes, ;, && or redirects, or it is denied. Asked to fix conflicts on a PR, run git fetch origin main, then git merge origin/main, resolve the conflicts with the Edit tool, run npm test and npm run build, then git add and git commit, and push. If an earlier claude/issue-<n>-* branch for this issue exists, build on it (git fetch origin <branch>, then git checkout origin/<branch> -- .) instead of starting over. Before your final report, tick every acceptance criterion in the issue body that your tests or checks demonstrate: write the full updated body with - [x] to a file with the Write tool, then run gh issue edit <n> --body-file <file>. Leave the rest unticked and say why in the report."
+      - name: Open a PR for Claude's branch
+        if: steps.claude.outputs.branch_name != '' && !github.event.issue.pull_request && github.event_name != 'pull_request_review' && github.event_name != 'pull_request_review_comment'
+        env:
+          GH_TOKEN: ${{ github.token }} # the action revokes its own App token when it finishes
+          BRANCH: ${{ steps.claude.outputs.branch_name }}
+          ISSUE: ${{ github.event.issue.number }}
+          TITLE: ${{ github.event.issue.title }}
+        run: |
+          git remote set-url origin "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY"
+          git fetch origin main "$BRANCH" || exit 0 # branch was never pushed: nothing was built
+          [ "$(git rev-list --count origin/main..origin/$BRANCH)" -gt 0 ] || exit 0
+          gh pr create --head "$BRANCH" --base main --title "$TITLE (#$ISSUE)" --body "Closes #$ISSUE. See Claude's comment on the issue for what changed."
+          # PRs opened with GITHUB_TOKEN start no workflows, so start CI by hand
+          gh workflow run ci.yml --ref "$BRANCH"

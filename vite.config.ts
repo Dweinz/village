@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
+  base: './', // GitHub Pages serves from /village/, relative paths work there and locally
   plugins: [react()],
   test: {
     // *.test.ts: headless simulation, plain Node (ADR 0001). *.test.tsx: the rendered App, in jsdom.
